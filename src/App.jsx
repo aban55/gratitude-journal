@@ -1,11 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import GoogleSync from "./GoogleSync";
-import InstallPrompt from "./InstallPrompt";
-
-// storage keys
-const ENTRIES_KEY = "gj_entries_v1";
-const DRAFT_KEY   = "gj_draft_v1";
-const THEME_KEY   = "gj_theme_v1";
+import React, { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import SummaryPanel from "./components/SummaryPanel.jsx";
+import Inspiration from "./components/Inspiration.jsx";
+import GoogleSync from "./GoogleSync.jsx";
+import InstallPrompt from "./InstallPrompt.jsx";
+import { Button } from "./ui/Button.jsx";
+import { Card, CardContent } from "./ui/Card.jsx";
+import { Textarea } from "./ui/Textarea.jsx";
+import { Select } from "./ui/Select.jsx";
+import { Slider } from "./ui/Slider.jsx";
 
 const SECTIONS = {
   "People & Relationships": [
@@ -52,348 +55,279 @@ const SECTIONS = {
   ],
 };
 
-const sentiments = { pos: "🙂 Positive", neu: "😐 Neutral", neg: "😟 Low" };
+function analyzeSentiment(text) {
+  const pos = ["grateful", "happy", "joy", "peace", "love", "hopeful", "proud"];
+  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
+  let score = 0;
+  pos.forEach((w) => text.toLowerCase().includes(w) && (score += 1));
+  neg.forEach((w) => text.toLowerCase().includes(w) && (score -= 1));
+  if (score > 1) return "🙂 Positive";
+  if (score === 0) return "😐 Neutral";
+  return "😟 Low";
+}
 
 export default function App() {
-  // UI state
-  const [tab, setTab] = useState("journal"); // journal | summary | settings
-  const [darkMode, setDarkMode] = useState(false);
-
-  // compose state
-  const [section, setSection] = useState(Object.keys(SECTIONS)[0]);
+  const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
-
-  // data
   const [entries, setEntries] = useState([]);
-  const [autoUploadTick, setAutoUploadTick] = useState(0);
+  const [view, setView] = useState("journal");
+  const [darkMode, setDarkMode] = useState(
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  );
 
-  // edit state
-  const [editingId, setEditingId] = useState(null);
-  const lastDeletedRef = useRef(null);
-
-  // theme init
+  // Load from localStorage
   useEffect(() => {
-    const t = localStorage.getItem(THEME_KEY);
-    if (t) setDarkMode(t === "dark");
-    else {
-      const prefers = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setDarkMode(prefers);
-      localStorage.setItem(THEME_KEY, prefers ? "dark" : "light");
-    }
+    const s = localStorage.getItem("gratitudeEntries");
+    if (s) setEntries(JSON.parse(s));
   }, []);
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-    localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light");
-  }, [darkMode]);
-
-  // load & persist entries
-  useEffect(() => {
-    const raw = localStorage.getItem(ENTRIES_KEY);
-    if (raw) setEntries(JSON.parse(raw));
-    const draft = localStorage.getItem(DRAFT_KEY);
-    if (draft) {
-      const d = JSON.parse(draft);
-      setSection(d.section ?? section);
-      setQuestion(d.question ?? "");
-      setEntry(d.entry ?? "");
-      setMood(typeof d.mood === "number" ? d.mood : 5);
-    }
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+    localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
-  // autosave draft
+
+  // Sync theme with system
   useEffect(() => {
-    const t = setTimeout(() => {
-      localStorage.setItem(
-        DRAFT_KEY,
-        JSON.stringify({ section, question, entry, mood, updatedAt: Date.now() })
-      );
-    }, 300);
-    return () => clearTimeout(t);
-  }, [section, question, entry, mood]);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const f = (e) => setDarkMode(e.matches);
+    mq.addEventListener("change", f);
+    return () => mq.removeEventListener("change", f);
+  }, []);
 
-  function analyzeSentiment(text) {
-    const p = ["grateful", "happy", "love", "peace", "calm", "joy"];
-    const n = ["tired", "sad", "angry", "stress", "worried", "anxious"];
-    let score = 0;
-    p.forEach((w) => (text.toLowerCase().includes(w) ? (score += 1) : 0));
-    n.forEach((w) => (text.toLowerCase().includes(w) ? (score -= 1) : 0));
-    if (score > 0) return sentiments.pos;
-    if (score < 0) return sentiments.neg;
-    return sentiments.neu;
-  }
-
-  function clearEditor() {
-    setQuestion("");
-    setEntry("");
-    setMood(5);
-    setEditingId(null);
-    localStorage.removeItem(DRAFT_KEY);
-  }
-
-  function saveEntry() {
-    if (!question || !entry.trim()) return;
-    const now = new Date();
-    const payload = {
-      id: editingId ?? crypto.randomUUID(),
-      date: now.toLocaleDateString(),
-      iso: now.toISOString(),
+  // Save entry
+  const handleSave = () => {
+    if (!entry.trim() || !question) return;
+    const newE = {
+      id: Date.now(),
+      iso: new Date().toISOString(),
       section,
       question,
       entry,
       mood,
       sentiment: analyzeSentiment(entry),
     };
-    setEntries((prev) => {
-      let next = [...prev];
-      if (editingId) next = next.map((e) => (e.id === editingId ? payload : e));
-      else next.push(payload);
-      return next;
+    setEntries([...entries, newE]);
+    setEntry("");
+    setQuestion("");
+    setMood(5);
+  };
+
+  // Edit / Delete
+  const handleDelete = (id) => setEntries(entries.filter((e) => e.id !== id));
+  const handleEdit = (id, newText) =>
+    setEntries(entries.map((e) => (e.id === id ? { ...e, entry: newText } : e)));
+
+  // Export / Import
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(entries, null, 2)], {
+      type: "application/json",
     });
-    clearEditor();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "gratitude_journal_backup.json";
+    link.click();
+  };
+  const handleImport = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        setEntries(Array.isArray(data) ? data : []);
+      } catch {
+        alert("Invalid file");
+      }
+    };
+    r.readAsText(f);
+  };
 
-    // 🔁 trigger auto upload if signed-in
-    setAutoUploadTick((t) => t + 1);
-  }
-
-  function deleteEntry(id) {
-    setEntries((prev) => {
-      const target = prev.find((e) => e.id === id);
-      if (target) lastDeletedRef.current = target;
-      return prev.filter((e) => e.id !== id);
-    });
-  }
-  function undoDelete() {
-    const item = lastDeletedRef.current;
-    if (!item) return;
-    setEntries((p) => [...p, item]);
-    lastDeletedRef.current = null;
-  }
-  function beginEdit(e) {
-    setEditingId(e.id);
-    setSection(e.section);
-    setQuestion(e.question);
-    setEntry(e.entry);
-    setMood(e.mood);
-    setTab("journal");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  // Summary metrics
-  const summary = useMemo(() => {
-    if (!entries.length) return null;
-    const last7 = [...entries].slice(-7);
-    const avg = (last7.reduce((a, e) => a + e.mood, 0) / last7.length).toFixed(1);
-    const bySent = last7.reduce((acc, e) => {
-      acc[e.sentiment] = (acc[e.sentiment] || 0) + 1;
-      return acc;
-    }, {});
-    return { avgMood: avg, count: entries.length, bySent };
-  }, [entries]);
-
-  const darkBox = darkMode ? "bg-gray-800 text-gray-100" : "bg-white";
-  const inputStyle = darkMode ? "bg-gray-700 border-gray-600" : "";
+  // View colors
+  const darkBox = darkMode ? "bg-gray-800 text-gray-100" : "bg-white text-gray-900";
 
   return (
-    <div className={`min-h-screen ${darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"}`}>
-      <div className={`max-w-3xl mx-auto p-6 ${darkMode ? "" : ""}`}>
-        {/* header */}
-        <div className={`${darkBox} rounded-2xl p-5 shadow mb-4`}>
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-green-600">🌿 Daily Gratitude Journal</h1>
-            <button
-              onClick={() => setDarkMode((d) => !d)}
-              className="px-3 py-1 rounded bg-green-600 text-white"
-              title="Toggle theme"
-            >
-              {darkMode ? "☀️" : "🌙"}
-            </button>
-          </div>
+    <div
+      className={`min-h-screen ${
+        darkMode ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"
+      }`}
+    >
+      <div className="max-w-3xl mx-auto p-6 space-y-4">
+        <h1 className="text-3xl font-bold text-center">
+          🌿 Daily Gratitude Journal
+        </h1>
 
-          <div className="flex gap-2 mt-4">
-            {["journal", "summary", "settings"].map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-lg ${
-                  tab === t ? "bg-green-600 text-white" : darkMode ? "bg-gray-700" : "bg-gray-200"
-                }`}
-              >
-                {t === "journal" ? "Journal" : t === "summary" ? "Summary" : "Settings"}
-              </button>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div className="flex justify-center gap-2">
+          {["journal", "summary", "settings"].map((tab) => (
+            <Button
+              key={tab}
+              variant={view === tab ? "default" : "outline"}
+              onClick={() => setView(tab)}
+            >
+              {tab === "journal"
+                ? "Journal"
+                : tab === "summary"
+                ? "Summary"
+                : "Settings"}
+            </Button>
+          ))}
         </div>
 
-        {/* Journal */}
-        {tab === "journal" && (
-          <div className={`${darkBox} rounded-2xl p-5 shadow`}>
-            <label className="font-medium">Section</label>
-            <select
-              className={`w-full p-2 border rounded mb-3 ${inputStyle}`}
-              value={section}
-              onChange={(e) => {
-                setSection(e.target.value);
-                setQuestion("");
-              }}
-            >
-              {Object.keys(SECTIONS).map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-
-            <label className="font-medium">Question / Prompt</label>
-            <select
-              className={`w-full p-2 border rounded mb-3 ${inputStyle}`}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            >
-              <option value="">Pick a gratitude question</option>
-              {SECTIONS[section].map((q) => (
-                <option key={q}>{q}</option>
-              ))}
-            </select>
-
-            <label className="font-medium">Your Entry</label>
-            <textarea
-              rows={5}
-              className={`w-full p-2 border rounded mb-3 ${inputStyle}`}
-              value={entry}
-              onChange={(e) => setEntry(e.target.value)}
-              placeholder="Write freely…"
-            />
-
-            <div className="mb-4">
-              <div className="flex items-center justify-between">
-                <label className="font-medium">Mood (1–10)</label>
-                <span className="text-sm">{mood}</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={mood}
-                onChange={(e) => setMood(Number(e.target.value))}
-                className="w-full"
+        {/* JOURNAL VIEW */}
+        {view === "journal" && (
+          <Card className={darkBox}>
+            <CardContent className="space-y-4">
+              <Inspiration darkMode={darkMode} />
+              <Select
+                value={section}
+                onChange={(v) => {
+                  setSection(v);
+                  setQuestion("");
+                }}
+                options={Object.keys(sections)}
               />
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={saveEntry} className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700">
-                {editingId ? "Update Entry" : "Save Entry"}
-              </button>
-              <button onClick={clearEditor} className="flex-1 bg-gray-300 text-gray-800 py-2 rounded hover:bg-gray-400">
-                Clear
-              </button>
-            </div>
-
-            {/* list */}
-            {entries.length > 0 && (
-              <div className="mt-6 space-y-3">
-                {[...entries].reverse().map((e) => (
-                  <div key={e.id} className={`p-3 border rounded ${darkMode ? "border-gray-700 bg-gray-800" : "bg-gray-50"}`}>
-                    <div className="text-sm text-gray-500">{e.date} • {e.section}</div>
-                    <div className="italic text-sm">{e.question}</div>
-                    <div className="mt-1">{e.entry}</div>
-                    <div className="text-xs mt-1 text-green-700">
-                      Mood: {e.mood} | Sentiment: {e.sentiment}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => beginEdit(e)} className="px-3 py-1 rounded bg-amber-500 text-white">Edit</button>
-                      <button onClick={() => deleteEntry(e.id)} className="px-3 py-1 rounded bg-red-600 text-white">Delete</button>
-                    </div>
-                  </div>
-                ))}
-                {lastDeletedRef.current && (
-                  <button onClick={undoDelete} className="text-sm underline text-blue-600">Undo last delete</button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Summary */}
-        {tab === "summary" && (
-          <div className={`${darkBox} rounded-2xl p-5 shadow`}>
-            <h2 className="text-xl font-semibold mb-2">📊 Summary</h2>
-            {!summary ? (
-              <p className="text-gray-500">No entries yet.</p>
-            ) : (
-              <>
-                <p className="mb-2">Average Mood (last 7): <b>{summary.avgMood}</b></p>
-                <p className="mb-2">Entries saved: <b>{summary.count}</b></p>
-                <ul className="list-disc list-inside">
-                  {Object.entries(summary.bySent).map(([k, v]) => (
-                    <li key={k}>{k}: {v}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Settings */}
-        {tab === "settings" && (
-          <div className={`${darkBox} rounded-2xl p-5 shadow`}>
-            <h2 className="text-xl font-semibold mb-2">⚙️ Settings</h2>
-
-            {/* Export / Import – purely local */}
-            <div className="mb-4">
-              <p className="font-medium mb-2">Local Export / Import</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300"
-                  onClick={() => {
-                    const text = JSON.stringify(entries, null, 2);
-                    const blob = new Blob([text], { type: "application/json" });
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = "gratitude_entries.json";
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                  }}
-                >
-                  Export JSON
-                </button>
-                <label className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer">
-                  Import JSON
-                  <input
-                    type="file"
-                    accept="application/json"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        try {
-                          const parsed = JSON.parse(reader.result);
-                          if (Array.isArray(parsed)) setEntries(parsed);
-                        } catch {}
-                      };
-                      reader.readAsText(f);
-                    }}
+              <Select
+                value={question}
+                onChange={setQuestion}
+                options={["", ...sections[section]]}
+                placeholder="Pick a question"
+              />
+              {question && (
+                <>
+                  <p className="text-sm text-gray-500">{question}</p>
+                  <Textarea
+                    value={entry}
+                    onChange={(e) => setEntry(e.target.value)}
+                    placeholder="Write your reflection..."
                   />
-                </label>
-              </div>
-            </div>
+                  <div className="space-y-1">
+                    <p className="text-sm">
+                      Mood: <strong>{mood}/10</strong>
+                    </p>
+                    <Slider
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={[mood]}
+                      onChange={(v) => setMood(v[0])}
+                    />
+                  </div>
+                  <Button onClick={handleSave}>Save Entry</Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Drive Sync Component */}
-            <GoogleSync
-              dataToSync={{ entries }}
-              onRestore={(data) => Array.isArray(data.entries) && setEntries(data.entries)}
-              autoUploadTrigger={autoUploadTick}
-              darkMode={darkMode}
-            />
+        {/* SUMMARY VIEW */}
+        {view === "summary" && (
+          <Card className={darkBox}>
+            <CardContent>
+              <SummaryPanel entries={entries} darkMode={darkMode} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* SETTINGS VIEW */}
+        {view === "settings" && (
+          <Card className={darkBox}>
+            <CardContent className="space-y-4">
+              <GoogleSync
+                dataToSync={{ entries }}
+                onRestore={(restored) =>
+                  Array.isArray(restored.entries) && setEntries(restored.entries)
+                }
+              />
+              <div>
+                <h3 className="font-semibold mb-1">Local Backup</h3>
+                <div className="flex gap-2">
+                  <Button onClick={handleExport}>Export JSON</Button>
+                  <label className="bg-gray-200 text-gray-800 px-3 py-2 rounded cursor-pointer hover:bg-gray-300">
+                    Import
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleImport}
+                      accept=".json"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Theme</h3>
+                <Button
+                  variant="outline"
+                  onClick={() => setDarkMode((d) => !d)}
+                >
+                  {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Past Entries */}
+        {view === "journal" && entries.length > 0 && (
+          <div className="space-y-3 mt-6">
+            <h2 className="text-xl font-semibold">🕊 Past Entries</h2>
+            {entries
+              .slice()
+              .reverse()
+              .map((e) => (
+                <Card key={e.id} className={darkBox}>
+                  <CardContent>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          {new Date(e.iso).toLocaleString()} — {e.section}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Mood {e.mood}/10 | {e.sentiment}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const newText = prompt("Edit entry:", e.entry);
+                            if (newText !== null) handleEdit(e.id, newText);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() =>
+                            window.confirm("Delete entry?") &&
+                            handleDelete(e.id)
+                          }
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap">{e.entry}</p>
+                  </CardContent>
+                </Card>
+              ))}
           </div>
         )}
       </div>
 
-      {/* Floating install button + iOS hint */}
-      <InstallPrompt darkMode={darkMode} />
+      {/* Floating install prompt */}
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          transition={{ duration: 0.3 }}
+          className="fixed bottom-5 right-5"
+        >
+          <InstallPrompt />
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

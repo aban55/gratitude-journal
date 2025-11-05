@@ -1,12 +1,12 @@
 {
   "name": "Daily Gratitude Journal",
   "short_name": "Gratitude",
-  "description": "Write daily reflections. Sync with Google Drive. Works offline.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#16a34a",
   "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#22c55e",
+  "description": "A minimal, mindful gratitude journal with Google Drive sync and offline access.",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -17,6 +17,12 @@
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

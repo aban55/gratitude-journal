@@ -3,229 +3,187 @@ import { gapi } from "gapi-script";
 
 const CLIENT_ID =
   "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";
-const API_KEY = ""; // Optional, leave blank if not required
+const API_KEY = "";
 const SCOPES =
-  "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
-const BACKUP_FILENAME = "gratitude_journal_backup.json";
+  "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
 
-export default function GoogleSync({ dataToSync, onUserSignedIn }) {
+export default function GoogleSync({ dataToSync }) {
   const [isSignedIn, setIsSignedIn] = useState(false);
-  const [userEmail, setUserEmail] = useState("");
-  const [status, setStatus] = useState(""); // syncing | restoring | done | error
-  const [loadingText, setLoadingText] = useState("");
-  const [progress, setProgress] = useState(0);
+  const [userProfile, setUserProfile] = useState(null);
+  const [status, setStatus] = useState("");
 
   // ---- Initialize Google API ----
   useEffect(() => {
-    async function initClient() {
-      await gapi.client.init({
-        apiKey: API_KEY,
-        clientId: CLIENT_ID,
-        discoveryDocs: [
-          "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
-        ],
-        scope: SCOPES,
-      });
+    function initClient() {
+      gapi.client
+        .init({
+          apiKey: API_KEY,
+          clientId: CLIENT_ID,
+          discoveryDocs: [
+            "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+          ],
+          scope: SCOPES,
+        })
+        .then(() => {
+          const auth = gapi.auth2.getAuthInstance();
 
-      const auth = gapi.auth2.getAuthInstance();
+          // Listen for sign-in changes
+          auth.isSignedIn.listen(setIsSignedIn);
 
-      const updateSigninStatus = async (isSignedIn) => {
-        setIsSignedIn(isSignedIn);
-        if (isSignedIn) {
-          try {
-            const googleUser = auth.currentUser.get();
-            const accessToken = googleUser.getAuthResponse(true).access_token;
-            const userInfo = await gapi.client.request({
-              path: "https://www.googleapis.com/oauth2/v3/userinfo",
-              headers: { Authorization: `Bearer ${accessToken}` },
+          // If already signed in
+          const signedIn = auth.isSignedIn.get();
+          setIsSignedIn(signedIn);
+
+          if (signedIn) {
+            const user = auth.currentUser.get();
+            const profile = user.getBasicProfile();
+            setUserProfile({
+              name: profile.getName(),
+              email: profile.getEmail(),
+              image: profile.getImageUrl(),
             });
 
-            const email = userInfo.result.email || "";
-            setUserEmail(email);
-            onUserSignedIn?.({ email });
+            // Auto-restore from Drive
             restoreFromDrive();
-          } catch (err) {
-            console.error("User info fetch failed:", err);
           }
-        } else {
-          setUserEmail("");
-        }
-      };
-
-      updateSigninStatus(auth.isSignedIn.get());
-      auth.isSignedIn.listen(updateSigninStatus);
+        })
+        .catch((err) => console.error("GAPI init error:", err));
     }
 
     gapi.load("client:auth2", initClient);
   }, []);
 
-  // ---- Progress animation ----
-  const animateProgress = (target) => {
-    setProgress(0);
-    let val = 0;
-    const interval = setInterval(() => {
-      val += 10;
-      setProgress(Math.min(val, target));
-      if (val >= target) clearInterval(interval);
-    }, 60);
+  // ---- Upload to Google Drive ----
+  const backupToDrive = async () => {
+    if (!isSignedIn) {
+      setStatus("Please sign in first.");
+      return;
+    }
+    try {
+      setStatus("Backing up to Drive...");
+
+      const fileContent = JSON.stringify(dataToSync, null, 2);
+      const file = new Blob([fileContent], { type: "application/json" });
+      const metadata = {
+        name: "gratitude_journal_backup.json",
+        parents: ["appDataFolder"],
+      };
+
+      const form = new FormData();
+      form.append(
+        "metadata",
+        new Blob([JSON.stringify(metadata)], { type: "application/json" })
+      );
+      form.append("file", file);
+
+      const accessToken = gapi.auth.getToken().access_token;
+      const res = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        {
+          method: "POST",
+          headers: new Headers({ Authorization: "Bearer " + accessToken }),
+          body: form,
+        }
+      );
+
+      if (res.ok) {
+        setStatus("✅ Backup successful!");
+      } else {
+        setStatus("❌ Backup failed.");
+      }
+    } catch (error) {
+      console.error(error);
+      setStatus("❌ Error during backup.");
+    }
   };
 
   // ---- Restore from Drive ----
   const restoreFromDrive = async () => {
     try {
-      setStatus("restoring");
-      setLoadingText("☁️ Restoring your journal...");
-      animateProgress(70);
-
-      const res = await gapi.client.drive.files.list({
-        q: `name='${BACKUP_FILENAME}' and trashed=false`,
-        fields: "files(id, name)",
+      setStatus("Restoring from Drive...");
+      const response = await gapi.client.drive.files.list({
+        spaces: "appDataFolder",
+        fields: "files(id, name, modifiedTime)",
       });
 
-      if (res.result.files && res.result.files.length > 0) {
-        const fileId = res.result.files[0].id;
+      const files = response.result.files;
+      if (files && files.length > 0) {
+        // Get the most recent backup
+        const latest = files.reduce((a, b) =>
+          new Date(a.modifiedTime) > new Date(b.modifiedTime) ? a : b
+        );
+
         const file = await gapi.client.drive.files.get({
-          fileId,
+          fileId: latest.id,
           alt: "media",
         });
 
-        if (file.body) {
-          const parsed = JSON.parse(file.body);
-          if (parsed.savedEntries && parsed.savedAffirmations) {
-            localStorage.setItem(
-              "gratitudeEntries",
-              JSON.stringify(parsed.savedEntries)
-            );
-            localStorage.setItem(
-              "savedAffirmations",
-              JSON.stringify(parsed.savedAffirmations)
-            );
-            setStatus("done");
-            animateProgress(100);
-            setLoadingText("✅ Journal restored successfully!");
-            setTimeout(() => setLoadingText(""), 3000);
-            window.location.reload();
-          }
-        }
+        const restoredData = JSON.parse(file.body);
+        localStorage.setItem("gratitudeEntries", JSON.stringify(restoredData.savedEntries || []));
+        localStorage.setItem("savedAffirmations", JSON.stringify(restoredData.savedAffirmations || []));
+
+        setStatus("✅ Restored successfully!");
       } else {
-        setStatus("done");
-        animateProgress(100);
-        setLoadingText("No backup found — will create one soon.");
-        setTimeout(() => setLoadingText(""), 3000);
+        setStatus("No backup found on Drive.");
       }
-    } catch (err) {
-      console.error("Drive restore error:", err);
-      setStatus("error");
-      setLoadingText("⚠️ Restore failed. Please check console.");
+    } catch (error) {
+      console.error("Restore error:", error);
+      setStatus("❌ Restore failed.");
     }
-  };
-
-  // ---- Save to Drive whenever data changes ----
-  useEffect(() => {
-    if (!isSignedIn || status === "restoring") return;
-
-    const saveToDrive = async () => {
-      try {
-        setStatus("syncing");
-        animateProgress(80);
-        setLoadingText("🔄 Syncing to Drive...");
-
-        const res = await gapi.client.drive.files.list({
-          q: `name='${BACKUP_FILENAME}' and trashed=false`,
-          fields: "files(id, name)",
-        });
-
-        const content = JSON.stringify(dataToSync, null, 2);
-        const blob = new Blob([content], { type: "application/json" });
-        const metadata = {
-          name: BACKUP_FILENAME,
-          mimeType: "application/json",
-        };
-
-        const form = new FormData();
-        form.append(
-          "metadata",
-          new Blob([JSON.stringify(metadata)], { type: "application/json" })
-        );
-        form.append("file", blob);
-
-        if (res.result.files && res.result.files.length > 0) {
-          const fileId = res.result.files[0].id;
-          await gapi.client.request({
-            path: `/upload/drive/v3/files/${fileId}`,
-            method: "PATCH",
-            params: { uploadType: "multipart" },
-            body: form,
-          });
-        } else {
-          await gapi.client.request({
-            path: "/upload/drive/v3/files",
-            method: "POST",
-            params: { uploadType: "multipart" },
-            body: form,
-          });
-        }
-
-        setStatus("done");
-        animateProgress(100);
-        setLoadingText("✅ Synced successfully!");
-        setTimeout(() => setLoadingText(""), 3000);
-      } catch (err) {
-        console.error("Error saving to Drive:", err);
-        setStatus("error");
-        setLoadingText("⚠️ Sync failed. Check console.");
-      }
-    };
-
-    const debounce = setTimeout(saveToDrive, 1000);
-    return () => clearTimeout(debounce);
-  }, [dataToSync, isSignedIn]);
-
-  const handleSignIn = () => gapi.auth2.getAuthInstance().signIn();
-  const handleSignOut = () => {
-    gapi.auth2.getAuthInstance().signOut();
-    setUserEmail("");
-    setIsSignedIn(false);
   };
 
   // ---- UI ----
   return (
-    <div className="mt-6 text-center relative">
-      {!isSignedIn ? (
+    <div className="text-center mt-8">
+      <h3 className="text-lg font-semibold mb-2 text-green-600">
+        ☁️ Google Drive Sync
+      </h3>
+
+      {isSignedIn ? (
+        <div className="flex flex-col items-center gap-2">
+          {userProfile?.image && (
+            <img
+              src={userProfile.image}
+              alt="Profile"
+              className="w-12 h-12 rounded-full border"
+            />
+          )}
+          <div>
+            <p className="font-medium">{userProfile?.name}</p>
+            <p className="text-sm text-gray-500">{userProfile?.email}</p>
+          </div>
+
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={backupToDrive}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            >
+              Backup
+            </button>
+            <button
+              onClick={restoreFromDrive}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Restore
+            </button>
+            <button
+              onClick={() => gapi.auth2.getAuthInstance().signOut()}
+              className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      ) : (
         <button
-          onClick={handleSignIn}
-          className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+          onClick={() => gapi.auth2.getAuthInstance().signIn()}
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
         >
           Sign in with Google Drive
         </button>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm text-green-500">
-            ✅ Synced as <strong>{userEmail}</strong>
-          </p>
-
-          {loadingText && (
-            <p className="text-sm text-gray-600 animate-pulse">{loadingText}</p>
-          )}
-
-          {/* Animated progress bar */}
-          {(status === "syncing" || status === "restoring") && (
-            <div className="w-full max-w-xs mx-auto bg-gray-300 h-2 rounded overflow-hidden">
-              <div
-                className="bg-green-500 h-2 transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              ></div>
-            </div>
-          )}
-
-          <button
-            onClick={handleSignOut}
-            className="bg-gray-300 text-gray-800 px-3 py-1 rounded-lg hover:bg-gray-400 text-sm"
-          >
-            Sign Out
-          </button>
-        </div>
       )}
+
+      {status && <p className="text-sm mt-3 text-gray-600">{status}</p>}
     </div>
   );
 }

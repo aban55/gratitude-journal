@@ -107,69 +107,13 @@ export default function GoogleSync({ dataToSync, onRestore }) {
   // UPLOAD TO GOOGLE DRIVE
   // ------------------------------
   const uploadToDrive = async () => {
-  setStatus("uploading");
-  try {
-    const content = JSON.stringify(dataToSync, null, 2);
-    const blob = new Blob([content], { type: "application/json" });
+    if (!accessToken) return toast.error("Please sign in first");
+    setStatus("uploading");
+    try {
+      const blob = new Blob([JSON.stringify(dataToSync, null, 2)], {
+        type: "application/json",
+      });
 
-    // If offline → queue request in IndexedDB
-    if (!navigator.onLine) {
-      const db = await openDB();
-      await db.put("pending", {
-        url: "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + gapi.auth.getToken().access_token,
-        },
-        body: blob,
-      }, "backup");
-
-      // Register sync
-      if ("serviceWorker" in navigator && "SyncManager" in window) {
-        const reg = await navigator.serviceWorker.ready;
-        await reg.sync.register("sync-gratitude-upload");
-        alert("🕓 Offline – backup will upload automatically when you're back online!");
-      } else {
-        alert("Offline. Backup will sync next time you open the app.");
-      }
-      setStatus("idle");
-      return;
-    }
-
-    // Normal online upload path
-    const metadata = {
-      name: "gratitude_journal_backup.json",
-      mimeType: "application/json",
-    };
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", blob);
-
-    await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-      method: "POST",
-      headers: new Headers({
-        Authorization: "Bearer " + gapi.auth.getToken().access_token,
-      }),
-      body: form,
-    });
-
-    alert("✅ Synced successfully to Google Drive!");
-    setStatus("done");
-  } catch (err) {
-    console.error("Upload failed:", err);
-    setStatus("error");
-  }
-};
-
-// helper for IndexedDB (same as in service worker)
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("gratitude-sync", 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("pending");
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
       const search = await gapi.client.drive.files.list({
         q: "name='gratitude_journal_backup.json'",
         fields: "files(id, name)",

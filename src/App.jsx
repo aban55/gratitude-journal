@@ -368,9 +368,14 @@ export default function App() {
       {/* Google Drive Sync + Account Display */}
       <div className="text-center mt-6">
         <GoogleSync
-          dataToSync={{ savedEntries, savedAffirmations }}
-          onUserSignedIn={user => setGoogleUser(user)}
-        />
+  	  dataToSync={{ savedEntries, savedAffirmations }}
+  	  onRestore={(restored) => {
+   	  if (restored.savedEntries) setSavedEntries(restored.savedEntries);
+  	  if (restored.savedAffirmations)
+     	  setSavedAffirmations(restored.savedAffirmations);
+ 	  }}
+	/>
+
         {googleUser && (
           <p className="text-sm text-green-500 mt-2">
             ✅ Signed in as <strong>{googleUser.email}</strong>

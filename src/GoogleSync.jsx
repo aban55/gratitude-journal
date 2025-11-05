@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { gapi } from "gapi-script";
 
 const CLIENT_ID =
-  "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";
+  "494611899583-qnru4a6cnttnnrcadtb8gm0vt6uou5hi.apps.googleusercontent.com";
 const API_KEY = "";
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 

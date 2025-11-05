@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { gapi } from "gapi-script";
 
+// === CONFIGURATION ===
 const CLIENT_ID =
-  "494611899583-qnru4a6cnttnnrcadtb8gm0vt6uou5hi.apps.googleusercontent.com";
-const API_KEY = "";
+  "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";
+const API_KEY = "AIzaSyDhHwECQbkltGOExmeoizwkAj4CEV6pdmQ"; // <-- paste your new restricted key
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 
 export default function GoogleSync({ dataToSync, onRestore }) {
@@ -13,7 +14,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
 
   // ---- Initialize Google API ----
   useEffect(() => {
-    const start = () => {
+    function start() {
       gapi.client
         .init({
           apiKey: API_KEY,
@@ -28,13 +29,12 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           auth.isSignedIn.listen(updateSigninStatus);
           updateSigninStatus(auth.isSignedIn.get());
         })
-        .catch((err) => console.error("GAPI init failed:", err));
-    };
-
+        .catch((err) => console.error("⚠️ GAPI init failed:", err));
+    }
     gapi.load("client:auth2", start);
   }, []);
 
-  // ---- Handle Sign-in state ----
+  // ---- Update Sign-in State ----
   const updateSigninStatus = (signedIn) => {
     setIsSignedIn(signedIn);
     if (signedIn) {
@@ -47,29 +47,29 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         email: profile.getEmail(),
         image: profile.getImageUrl(),
       });
-      autoRestoreFromDrive(); // restore automatically after login
+      autoRestoreFromDrive();
     } else {
       setUser(null);
     }
   };
 
+  // ---- Sign In / Out ----
   const signIn = () => gapi.auth2.getAuthInstance().signIn();
   const signOut = () => gapi.auth2.getAuthInstance().signOut();
 
-  // ---- Upload backup ----
+  // ---- Upload Backup ----
   const uploadToDrive = async () => {
     setStatus("uploading");
     try {
       const content = JSON.stringify(dataToSync, null, 2);
       const blob = new Blob([content], { type: "application/json" });
 
-      // Check if file already exists
       const searchResponse = await gapi.client.drive.files.list({
         q: "name='gratitude_journal_backup.json'",
         fields: "files(id, name)",
       });
 
-      let fileId = searchResponse.result.files?.[0]?.id;
+      const fileId = searchResponse.result.files?.[0]?.id;
 
       if (fileId) {
         await gapi.client.request({
@@ -86,7 +86,9 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         const form = new FormData();
         form.append(
           "metadata",
-          new Blob([JSON.stringify(metadata)], { type: "application/json" })
+          new Blob([JSON.stringify(metadata)], {
+            type: "application/json",
+          })
         );
         form.append("file", blob);
         await fetch(
@@ -100,15 +102,16 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           }
         );
       }
+
       setStatus("done");
       alert("✅ Synced successfully to Google Drive!");
     } catch (err) {
-      console.error("Upload failed:", err);
+      console.error("❌ Upload failed:", err);
       setStatus("error");
     }
   };
 
-  // ---- Auto-restore from Drive ----
+  // ---- Auto Restore from Drive ----
   const autoRestoreFromDrive = async () => {
     try {
       setStatus("restoring");
@@ -132,7 +135,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       }
       setStatus("done");
     } catch (err) {
-      console.error("Restore failed:", err);
+      console.error("❌ Restore failed:", err);
       setStatus("error");
     }
   };
@@ -188,6 +191,11 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       )}
       {status === "done" && (
         <p className="text-sm text-green-600 mt-2">✅ Up to date</p>
+      )}
+      {status === "error" && (
+        <p className="text-sm text-red-600 mt-2">
+          ⚠️ Sync failed. Please retry or check console.
+        </p>
       )}
     </div>
   );

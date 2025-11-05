@@ -1,90 +1,66 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { logEvent } from "./analytics";
 
 export default function InstallPrompt({ darkMode }) {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [visible, setVisible] = useState(false);
-  const [showIOSBanner, setShowIOSBanner] = useState(false);
+  const [deferred, setDeferred] = useState(null);
+  const [show, setShow] = useState(false);
+  const [iosHint, setIosHint] = useState(false);
 
   useEffect(() => {
-    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
-
-    // iOS custom banner
+    // iOS Safari/Chrome hint (no beforeinstallprompt)
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
     if (isIOS && !isStandalone) {
-      setShowIOSBanner(true);
-      logEvent("pwa_ios_banner_shown");
+      setIosHint(true);
     }
 
-    // Chrome / Edge install prompt
-    window.addEventListener("beforeinstallprompt", (e) => {
+    const handler = (e) => {
       e.preventDefault();
-      setDeferredPrompt(e);
-      setVisible(true);
-      logEvent("pwa_prompt_shown");
-    });
-
-    window.addEventListener("appinstalled", () => {
-      logEvent("pwa_installed");
-      setVisible(false);
-      setShowIOSBanner(false);
-    });
+      setDeferred(e);
+      setShow(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", () => setShow(false));
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    logEvent("pwa_prompt_result", { outcome });
-    setVisible(false);
+  const askInstall = async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    const { outcome } = await deferred.userChoice;
+    setDeferred(null);
+    if (outcome !== "accepted") {
+      // let them call again after a while
+      setTimeout(() => setShow(true), 10000);
+    }
   };
 
-  return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          transition={{ duration: 0.4 }}
-          className="fixed bottom-4 left-0 right-0 flex justify-center z-50"
-        >
-          <button
-            onClick={handleInstall}
-            className={`px-5 py-3 rounded-xl shadow-lg font-medium flex items-center gap-2 ${
-              darkMode
-                ? "bg-green-600 text-white hover:bg-green-500"
-                : "bg-green-500 text-white hover:bg-green-600"
-            }`}
-          >
-            📲 Install Gratitude Journal
-          </button>
-        </motion.div>
-      )}
+  const bg = darkMode ? "bg-emerald-500" : "bg-green-600";
 
-      {showIOSBanner && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          transition={{ duration: 0.6 }}
-          className="fixed bottom-4 left-0 right-0 flex justify-center z-50"
-        >
-          <div
-            className={`max-w-sm mx-auto text-center px-4 py-3 rounded-lg text-sm shadow-md ${
-              darkMode
-                ? "bg-gray-800 text-gray-100"
-                : "bg-white text-gray-800 border border-gray-200"
-            }`}
+  return (
+    <>
+      {/* Floating FAB */}
+      <AnimatePresence>
+        {show && (
+          <motion.button
+            key="fab"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            onClick={askInstall}
+            className={`${bg} text-white fixed right-5 bottom-5 rounded-full shadow-xl px-4 py-3`}
           >
-            <p className="font-medium">📱 Add to Home Screen</p>
-            <p className="text-xs opacity-80 mt-1">
-              Tap <span className="font-semibold">Share → Add to Home Screen</span> to install.
-            </p>
-          </div>
-        </motion.div>
+            Install App
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* iOS hint bubble */}
+      {iosHint && !show && (
+        <div className="fixed right-5 bottom-5 max-w-xs rounded-xl shadow-lg p-3 text-sm bg-white border">
+          <b>Add to Home Screen:</b> Tap <span>Share</span> → <i>Add to Home Screen</i>.
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

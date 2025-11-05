@@ -1,84 +1,38 @@
-const CACHE_NAME = "gratitude-journal-v1";
-const ASSETS = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+// Simple offline-first cache + background-sync fallback
+const CACHE = "gj-v2";
+const CORE = ["/", "/index.html", "/manifest.json", "/icon-192.png"];
 
-// ✅ Install phase: Cache app shell
-self.addEventListener("install", (event) => {
-  console.log("[SW] Installing new version");
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
-  self.skipWaiting();
+let latestPayload = null;
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
 });
-
-// ✅ Activate phase: Clean old caches
-self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating and cleaning old caches");
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((key) => key !== CACHE_NAME && caches.delete(key)))
-    )
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.map((k) => (k !== CACHE ? caches.delete(k) : null))))
   );
   self.clients.claim();
 });
-
-// ✅ Serve cached assets when offline
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request)
-          .then((res) => {
-            if (event.request.method === "GET" && res.status === 200) {
-              const clone = res.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return res;
-          })
-          .catch(() => cached)
-      );
-    })
+self.addEventListener("fetch", (e) => {
+  e.respondWith(
+    caches.match(e.request).then((hit) => hit || fetch(e.request).catch(() => hit || new Response("Offline")))
   );
 });
 
-// ✅ Background Sync: retry failed Google Drive uploads
-self.addEventListener("sync", async (event) => {
-  if (event.tag === "sync-gratitude-upload") {
-    event.waitUntil(uploadPendingBackup());
+// receive latest data from page
+self.addEventListener("message", (e) => {
+  if (e.data?.type === "SET_GRATITUDE_PAYLOAD") {
+    latestPayload = e.data.payload;
   }
 });
 
-// Helper — upload data saved while offline
-async function uploadPendingBackup() {
-  try {
-    const db = await openDB();
-    const entry = await db.get("pending", "backup");
-    if (!entry) return;
-
-    console.log("[SW] Retrying Google Drive upload...");
-    const res = await fetch(entry.url, {
-      method: entry.method,
-      headers: entry.headers,
-      body: entry.body,
-    });
-
-    if (res.ok) {
-      console.log("[SW] Backup successfully uploaded after reconnect!");
-      await db.delete("pending", "backup");
-    } else {
-      console.warn("[SW] Retry failed, keeping for next sync");
+// try to re-sync when back online via Background Sync
+self.addEventListener("sync", async (e) => {
+  if (e.tag === "sync-gratitude-data" && latestPayload) {
+    // We cannot call Google API from SW directly (no gapi), so ask a client page to do it.
+    const all = await self.clients.matchAll({ includeUncontrolled: true });
+    for (const client of all) {
+      client.postMessage({ type: "DO_PAGE_UPLOAD" });
     }
-  } catch (err) {
-    console.error("[SW] Background sync failed:", err);
   }
-}
-
-// ✅ Simple IndexedDB helper for queued uploads
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("gratitude-sync", 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("pending");
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+});

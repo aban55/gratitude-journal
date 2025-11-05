@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { gapi } from "gapi-script";
-window.gapi = gapi;
 
 const CLIENT_ID =
   "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";
@@ -13,7 +12,6 @@ export default function GoogleSync({ dataToSync }) {
   const [userProfile, setUserProfile] = useState(null);
   const [status, setStatus] = useState("");
 
-  // ---- Initialize Google API ----
   useEffect(() => {
     function initClient() {
       gapi.client
@@ -27,113 +25,52 @@ export default function GoogleSync({ dataToSync }) {
         })
         .then(() => {
           const auth = gapi.auth2.getAuthInstance();
-
-          // Listen for sign-in changes
-          auth.isSignedIn.listen(setIsSignedIn);
-
-          // If already signed in
-          const signedIn = auth.isSignedIn.get();
-          setIsSignedIn(signedIn);
-
-          if (signedIn) {
-            const user = auth.currentUser.get();
-            const profile = user.getBasicProfile();
-            setUserProfile({
-              name: profile.getName(),
-              email: profile.getEmail(),
-              image: profile.getImageUrl(),
-            });
-
-            // Auto-restore from Drive
-            restoreFromDrive();
-          }
+          // Listen for sign-in state changes
+          auth.isSignedIn.listen(updateSigninStatus);
+          // Handle initial state
+          updateSigninStatus(auth.isSignedIn.get());
         })
-        .catch((err) => console.error("GAPI init error:", err));
+        .catch((err) => {
+          console.error("Google API init error:", err);
+          setStatus("⚠️ Google Drive unavailable.");
+        });
     }
 
     gapi.load("client:auth2", initClient);
+
+    // Attempt silent login to restore previous session
+    window.addEventListener("load", () => {
+      gapi.load("auth2", () => {
+        gapi.auth2
+          .init({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+          })
+          .then(() => {
+            const auth = gapi.auth2.getAuthInstance();
+            if (auth.isSignedIn.get()) updateSigninStatus(true);
+          });
+      });
+    });
   }, []);
 
-  // ---- Upload to Google Drive ----
-  const backupToDrive = async () => {
-    if (!isSignedIn) {
-      setStatus("Please sign in first.");
-      return;
-    }
-    try {
-      setStatus("Backing up to Drive...");
-
-      const fileContent = JSON.stringify(dataToSync, null, 2);
-      const file = new Blob([fileContent], { type: "application/json" });
-      const metadata = {
-        name: "gratitude_journal_backup.json",
-        parents: ["appDataFolder"],
-      };
-
-      const form = new FormData();
-      form.append(
-        "metadata",
-        new Blob([JSON.stringify(metadata)], { type: "application/json" })
-      );
-      form.append("file", file);
-
-      const accessToken = gapi.auth.getToken().access_token;
-      const res = await fetch(
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-        {
-          method: "POST",
-          headers: new Headers({ Authorization: "Bearer " + accessToken }),
-          body: form,
-        }
-      );
-
-      if (res.ok) {
-        setStatus("✅ Backup successful!");
-      } else {
-        setStatus("❌ Backup failed.");
-      }
-    } catch (error) {
-      console.error(error);
-      setStatus("❌ Error during backup.");
-    }
-  };
-
-  // ---- Restore from Drive ----
-  const restoreFromDrive = async () => {
-    try {
-      setStatus("Restoring from Drive...");
-      const response = await gapi.client.drive.files.list({
-        spaces: "appDataFolder",
-        fields: "files(id, name, modifiedTime)",
+  const updateSigninStatus = (isSignedIn) => {
+    setIsSignedIn(isSignedIn);
+    if (isSignedIn) {
+      const user = gapi.auth2.getAuthInstance().currentUser.get();
+      const profile = user.getBasicProfile();
+      setUserProfile({
+        name: profile.getName(),
+        email: profile.getEmail(),
+        image: profile.getImageUrl(),
       });
-
-      const files = response.result.files;
-      if (files && files.length > 0) {
-        // Get the most recent backup
-        const latest = files.reduce((a, b) =>
-          new Date(a.modifiedTime) > new Date(b.modifiedTime) ? a : b
-        );
-
-        const file = await gapi.client.drive.files.get({
-          fileId: latest.id,
-          alt: "media",
-        });
-
-        const restoredData = JSON.parse(file.body);
-        localStorage.setItem("gratitudeEntries", JSON.stringify(restoredData.savedEntries || []));
-        localStorage.setItem("savedAffirmations", JSON.stringify(restoredData.savedAffirmations || []));
-
-        setStatus("✅ Restored successfully!");
-      } else {
-        setStatus("No backup found on Drive.");
-      }
-    } catch (error) {
-      console.error("Restore error:", error);
-      setStatus("❌ Restore failed.");
+      setStatus("");
     }
   };
 
-  // ---- UI ----
+  const handleSignIn = () => gapi.auth2.getAuthInstance().signIn();
+  const handleSignOut = () => gapi.auth2.getAuthInstance().signOut();
+
   return (
     <div className="text-center mt-8">
       <h3 className="text-lg font-semibold mb-2 text-green-600">
@@ -149,35 +86,21 @@ export default function GoogleSync({ dataToSync }) {
               className="w-12 h-12 rounded-full border"
             />
           )}
-          <div>
-            <p className="font-medium">{userProfile?.name}</p>
-            <p className="text-sm text-gray-500">{userProfile?.email}</p>
+          <div className="text-sm">
+            <div className="font-medium">{userProfile?.name}</div>
+            <div className="text-gray-500">{userProfile?.email}</div>
           </div>
 
-          <div className="flex gap-3 mt-3">
-            <button
-              onClick={backupToDrive}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              Backup
-            </button>
-            <button
-              onClick={restoreFromDrive}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Restore
-            </button>
-            <button
-              onClick={() => gapi.auth2.getAuthInstance().signOut()}
-              className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
-            >
-              Sign Out
-            </button>
-          </div>
+          <button
+            onClick={handleSignOut}
+            className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 mt-3"
+          >
+            Sign Out
+          </button>
         </div>
       ) : (
         <button
-          onClick={() => gapi.auth2.getAuthInstance().signIn()}
+          onClick={handleSignIn}
           className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
         >
           Sign in with Google Drive

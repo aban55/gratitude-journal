@@ -3,8 +3,8 @@ import { gapi } from "gapi-script";
 
 // === CONFIGURATION ===
 const CLIENT_ID =
-  "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";
-const API_KEY = "AIzaSyDhHwECQbkltGOExmeoizwkAj4CEV6pdmQ"; // <-- paste your new restricted key
+  "814388665595-bctlpvoi9mtheuj3utdnd6hkon6v903g.apps.googleusercontent.com";
+const API_KEY = "AIzaSyCaGu5VYiJ2pIxjhEmeqfhYHDrJmuKGe3I"; // <-- paste your new restricted key
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 
 export default function GoogleSync({ dataToSync, onRestore }) {

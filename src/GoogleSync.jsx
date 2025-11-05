@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { gapi } from "gapi-script";
+window.gapi = gapi;
 
 const CLIENT_ID =
   "814388665595-1hh28db0l55nsposkvco1dcva0ssje2r.apps.googleusercontent.com";

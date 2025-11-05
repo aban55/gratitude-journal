@@ -1,333 +1,359 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import SummaryPanel from "./components/SummaryPanel.jsx";
-import Inspiration from "./components/Inspiration.jsx";
-import GoogleSync from "./GoogleSync.jsx";
-import InstallPrompt from "./InstallPrompt.jsx";
-import { Button } from "./ui/Button.jsx";
-import { Card, CardContent } from "./ui/Card.jsx";
-import { Textarea } from "./ui/Textarea.jsx";
-import { Select } from "./ui/Select.jsx";
-import { Slider } from "./ui/Slider.jsx";
+import GoogleSync from "./GoogleSync";
+import React, { useState, useEffect } from "react";
 
-const SECTIONS = {
+const DRAFT_KEY = "gj_draft_v1";
+const ENTRIES_KEY = "gratitudeEntries";
+const AFFIRM_KEY = "savedAffirmations";
+const THEME_KEY = "gj_theme";
+
+// 🔹 Sections (6) + curated prompts
+const SECTIONS = [
+  "People & Relationships",
+  "Personal Growth",
+  "Work & Learning",
+  "Health & Mindfulness",
+  "Simple Joys & Daily Life",
+  "Challenges & Resilience",
+];
+
+const PROMPTS = {
   "People & Relationships": [
-    "Who made my life easier or better today?",
-    "Which friend or family member am I grateful for — and why?",
-    "What small act of kindness did someone show me recently?",
-    "What’s a quality in someone close to me that I admire?",
-    "Who did I help or encourage today — and how did that feel?",
+    "Who made your day easier today?",
+    "What small kindness did you receive recently?",
+    "Which relationship are you grateful for and why?",
+    "Who did you learn something from this week?",
+    "What conversation left you feeling lighter?"
   ],
-  "Self & Inner Strength": [
-    "What ability or personal quality am I thankful for today?",
-    "What challenge have I handled better than before?",
-    "What is one thing about my body or health I appreciate?",
-    "What habit or discipline am I proud of keeping?",
-    "What lesson did a past mistake teach me that helps me now?",
+  "Personal Growth": [
+    "What did you handle better today than last time?",
+    "Which habit are you proud of keeping?",
+    "What skill are you slowly improving?",
+    "What felt uncomfortable but helped you grow?",
+    "What did you learn about yourself?"
   ],
-  "Learning & Growth": [
-    "What new idea or skill did I learn recently?",
-    "What feedback or advice am I grateful for?",
-    "What am I curious or excited to explore next?",
-    "What problem am I grateful to have — because it’s teaching me something?",
-    "What book, conversation, or experience gave me insight recently?",
+  "Work & Learning": [
+    "What problem did you solve (or move forward) today?",
+    "What did you learn that excited you?",
+    "Who supported your work or studies?",
+    "What progress (however small) did you make?",
+    "What tool/process saved you time?"
   ],
-  "Environment & Everyday Comforts": [
-    "What part of my home brings me peace or comfort?",
-    "What small thing in nature caught my attention today — light, wind, birds, sky, trees?",
-    "What simple pleasure did I enjoy — food, music, warmth, quiet?",
-    "What modern convenience or tool makes life smoother?",
-    "What moment today felt safe, calm, or peaceful?",
+  "Health & Mindfulness": [
+    "What did your body do for you today?",
+    "When did you breathe and feel present?",
+    "What nourished you (food, water, rest)?",
+    "What movement felt good?",
+    "What helped you calm your mind?"
   ],
-  "Perspective & Hope": [
-    "What opportunity am I grateful to have that others may not?",
-    "What am I looking forward to in the coming week?",
-    "Who or what reminds me that life is bigger than my worries?",
-    "How has a tough time in my life shaped who I am today?",
-    "What am I thankful for that I usually take for granted?",
+  "Simple Joys & Daily Life": [
+    "What tiny moment brought a smile?",
+    "What did you enjoy with your senses (sight/sound/smell/taste/touch)?",
+    "What place felt cozy or safe?",
+    "What routine made life smoother?",
+    "What unexpected pleasant surprise happened?"
   ],
-  "Health & Wellbeing": [
-    "What part of my body served me well today?",
-    "What healthy choice did I make today?",
-    "How does my body show gratitude when I care for it?",
-    "What signs of recovery or strength am I noticing lately?",
-    "Who supports my physical or emotional health — and how can I appreciate them?",
+  "Challenges & Resilience": [
+    "What challenge taught you something today?",
+    "How did you show resilience?",
+    "What setback are you grateful for in hindsight?",
+    "Who/what helped you through difficulty?",
+    "What perspective helped you accept what you can’t control?"
   ],
 };
 
-function analyzeSentiment(text) {
-  const pos = ["grateful", "happy", "joy", "peace", "love", "hopeful", "proud"];
-  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
-  let score = 0;
-  pos.forEach((w) => text.toLowerCase().includes(w) && (score += 1));
-  neg.forEach((w) => text.toLowerCase().includes(w) && (score -= 1));
-  if (score > 1) return "🙂 Positive";
-  if (score === 0) return "😐 Neutral";
-  return "😟 Low";
-}
-
 export default function App() {
-  const [section, setSection] = useState(Object.keys(sections)[0]);
+  const [section, setSection] = useState(SECTIONS[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
+  const [savedEntries, setSavedEntries] = useState([]);
+  const [savedAffirmations, setSavedAffirmations] = useState([]);
   const [mood, setMood] = useState(5);
-  const [entries, setEntries] = useState([]);
   const [view, setView] = useState("journal");
-  const [darkMode, setDarkMode] = useState(
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-  );
+  const [lastSaved, setLastSaved] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
 
-  // Load from localStorage
+  // ---- load from localStorage on mount ----
   useEffect(() => {
-    const s = localStorage.getItem("gratitudeEntries");
-    if (s) setEntries(JSON.parse(s));
+    const stored = localStorage.getItem(ENTRIES_KEY);
+    if (stored) setSavedEntries(JSON.parse(stored));
+
+    const storedAffirmations = localStorage.getItem(AFFIRM_KEY);
+    if (storedAffirmations) setSavedAffirmations(JSON.parse(storedAffirmations));
+
+    const draftRaw = localStorage.getItem(DRAFT_KEY);
+    if (draftRaw) {
+      const d = JSON.parse(draftRaw);
+      if (d.section) setSection(d.section);
+      if (d.question) setQuestion(d.question);
+      if (typeof d.mood === "number") setMood(d.mood);
+      if (d.entry) setEntry(d.entry);
+      if (d.updatedAt) setLastSaved(new Date(d.updatedAt));
+    }
+
+    // 🌙 Auto-detect theme on first visit
+    const storedTheme = localStorage.getItem(THEME_KEY);
+    if (storedTheme) {
+      setDarkMode(storedTheme === "dark");
+    } else {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setDarkMode(prefersDark);
+      localStorage.setItem(THEME_KEY, prefersDark ? "dark" : "light");
+    }
   }, []);
-  useEffect(() => {
-    localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
-  }, [entries]);
 
-  // Sync theme with system
+  // ---- persist entries + affirmations ----
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const f = (e) => setDarkMode(e.matches);
-    mq.addEventListener("change", f);
-    return () => mq.removeEventListener("change", f);
-  }, []);
+    localStorage.setItem(ENTRIES_KEY, JSON.stringify(savedEntries));
+    localStorage.setItem(AFFIRM_KEY, JSON.stringify(savedAffirmations));
+  }, [savedEntries, savedAffirmations]);
 
-  // Save entry
+  // ---- auto-save draft ----
+  useEffect(() => {
+    const payload = { section, question, entry, mood, updatedAt: Date.now() };
+    const t = setTimeout(() => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+      setLastSaved(new Date());
+    }, 400);
+    return () => clearTimeout(t);
+  }, [section, question, entry, mood]);
+
+  // ---- apply dark/light theme ----
+  useEffect(() => {
+    localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", darkMode);
+  }, [darkMode]);
+
+  // ---- simple sentiment detector ----
+  const analyzeSentiment = (text) => {
+    const positive = ["good", "grateful", "happy", "love", "peace"];
+    const negative = ["bad", "sad", "angry", "hate", "stress"];
+    let score = 0;
+    positive.forEach((w) => text.toLowerCase().includes(w) && score++);
+    negative.forEach((w) => text.toLowerCase().includes(w) && score--);
+    return score >= 0 ? "Positive" : "Negative";
+  };
+
+  // ---- save entry ----
   const handleSave = () => {
-    if (!entry.trim() || !question) return;
-    const newE = {
-      id: Date.now(),
-      iso: new Date().toISOString(),
-      section,
-      question,
-      entry,
-      mood,
-      sentiment: analyzeSentiment(entry),
-    };
-    setEntries([...entries, newE]);
-    setEntry("");
-    setQuestion("");
-    setMood(5);
+    if (question && entry.trim()) {
+      const sentiment = analyzeSentiment(entry);
+      setSavedEntries([
+        ...savedEntries,
+        { date: new Date().toLocaleDateString(), section, question, entry, mood, sentiment },
+      ]);
+      setEntry("");
+      setQuestion("");
+      setMood(5);
+      localStorage.removeItem(DRAFT_KEY);
+      setLastSaved(null);
+    }
   };
 
-  // Edit / Delete
-  const handleDelete = (id) => setEntries(entries.filter((e) => e.id !== id));
-  const handleEdit = (id, newText) =>
-    setEntries(entries.map((e) => (e.id === id ? { ...e, entry: newText } : e)));
-
-  // Export / Import
-  const handleExport = () => {
-    const blob = new Blob([JSON.stringify(entries, null, 2)], {
-      type: "application/json",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "gratitude_journal_backup.json";
-    link.click();
-  };
-  const handleImport = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      try {
-        const data = JSON.parse(r.result);
-        setEntries(Array.isArray(data) ? data : []);
-      } catch {
-        alert("Invalid file");
-      }
-    };
-    r.readAsText(f);
+  // ---- clear draft ----
+  const handleClearDraft = () => {
+    if (window.confirm("Clear this draft? This cannot be undone.")) {
+      setEntry("");
+      setQuestion("");
+      setMood(5);
+      localStorage.removeItem(DRAFT_KEY);
+      setLastSaved(null);
+    }
   };
 
-  // View colors
-  const darkBox = darkMode ? "bg-gray-800 text-gray-100" : "bg-white text-gray-900";
+  // ---- when section changes, keep current typed question OR let user pick new one
+  const handleSectionChange = (e) => {
+    const next = e.target.value;
+    setSection(next);
+    // If no manual question yet, auto-fill the first prompt for convenience
+    if (!question.trim() && PROMPTS[next]?.length) {
+      setQuestion(PROMPTS[next][0]);
+    }
+  };
 
+  // ---- UI ----
   return (
     <div
-      className={`min-h-screen ${
-        darkMode ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"
+      className={`min-h-screen p-6 transition-colors duration-300 ${
+        darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"
       }`}
     >
-      <div className="max-w-3xl mx-auto p-6 space-y-4">
-        <h1 className="text-3xl font-bold text-center">
+      {/* 🌙 Theme toggle */}
+      <button
+        onClick={() => setDarkMode(!darkMode)}
+        className="fixed top-5 right-5 p-2 rounded-full shadow-md bg-green-500 hover:bg-green-600 text-white"
+        title="Toggle dark mode"
+      >
+        {darkMode ? "☀️" : "🌙"}
+      </button>
+
+      <div
+        className={`max-w-2xl mx-auto p-6 rounded-2xl shadow ${
+          darkMode ? "bg-gray-800" : "bg-white"
+        }`}
+      >
+        <h1
+          className={`text-2xl font-bold mb-4 ${
+            darkMode ? "text-green-400" : "text-green-600"
+          }`}
+        >
           🌿 Daily Gratitude Journal
         </h1>
 
         {/* Tabs */}
-        <div className="flex justify-center gap-2">
-          {["journal", "summary", "settings"].map((tab) => (
-            <Button
+        <div className="flex gap-3 mb-6">
+          {["journal", "summary"].map((tab) => (
+            <button
               key={tab}
-              variant={view === tab ? "default" : "outline"}
               onClick={() => setView(tab)}
+              className={`px-4 py-2 rounded-lg ${
+                view === tab
+                  ? "bg-green-500 text-white"
+                  : darkMode
+                  ? "bg-gray-700 text-gray-200"
+                  : "bg-gray-200"
+              }`}
             >
-              {tab === "journal"
-                ? "Journal"
-                : tab === "summary"
-                ? "Summary"
-                : "Settings"}
-            </Button>
+              {tab === "journal" ? "Journal" : "Past Entries"}
+            </button>
           ))}
         </div>
 
-        {/* JOURNAL VIEW */}
+        {/* Journal view */}
         {view === "journal" && (
-          <Card className={darkBox}>
-            <CardContent className="space-y-4">
-              <Inspiration darkMode={darkMode} />
-              <Select
-                value={section}
-                onChange={(v) => {
-                  setSection(v);
-                  setQuestion("");
-                }}
-                options={Object.keys(sections)}
-              />
-              <Select
-                value={question}
-                onChange={setQuestion}
-                options={["", ...sections[section]]}
-                placeholder="Pick a question"
-              />
-              {question && (
-                <>
-                  <p className="text-sm text-gray-500">{question}</p>
-                  <Textarea
-                    value={entry}
-                    onChange={(e) => setEntry(e.target.value)}
-                    placeholder="Write your reflection..."
-                  />
-                  <div className="space-y-1">
-                    <p className="text-sm">
-                      Mood: <strong>{mood}/10</strong>
-                    </p>
-                    <Slider
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={[mood]}
-                      onChange={(v) => setMood(v[0])}
-                    />
-                  </div>
-                  <Button onClick={handleSave}>Save Entry</Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* SUMMARY VIEW */}
-        {view === "summary" && (
-          <Card className={darkBox}>
-            <CardContent>
-              <SummaryPanel entries={entries} darkMode={darkMode} />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* SETTINGS VIEW */}
-        {view === "settings" && (
-          <Card className={darkBox}>
-            <CardContent className="space-y-4">
-              <GoogleSync
-                dataToSync={{ entries }}
-                onRestore={(restored) =>
-                  Array.isArray(restored.entries) && setEntries(restored.entries)
-                }
-              />
-              <div>
-                <h3 className="font-semibold mb-1">Local Backup</h3>
-                <div className="flex gap-2">
-                  <Button onClick={handleExport}>Export JSON</Button>
-                  <label className="bg-gray-200 text-gray-800 px-3 py-2 rounded cursor-pointer hover:bg-gray-300">
-                    Import
-                    <input
-                      type="file"
-                      className="hidden"
-                      onChange={handleImport}
-                      accept=".json"
-                    />
-                  </label>
-                </div>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-1">Theme</h3>
-                <Button
-                  variant="outline"
-                  onClick={() => setDarkMode((d) => !d)}
-                >
-                  {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Past Entries */}
-        {view === "journal" && entries.length > 0 && (
-          <div className="space-y-3 mt-6">
-            <h2 className="text-xl font-semibold">🕊 Past Entries</h2>
-            {entries
-              .slice()
-              .reverse()
-              .map((e) => (
-                <Card key={e.id} className={darkBox}>
-                  <CardContent>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-400">
-                          {new Date(e.iso).toLocaleString()} — {e.section}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Mood {e.mood}/10 | {e.sentiment}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const newText = prompt("Edit entry:", e.entry);
-                            if (newText !== null) handleEdit(e.id, newText);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() =>
-                            window.confirm("Delete entry?") &&
-                            handleDelete(e.id)
-                          }
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap">{e.entry}</p>
-                  </CardContent>
-                </Card>
+          <>
+            {/* Section */}
+            <label className="block mb-2 font-semibold">Section</label>
+            <select
+              className={`w-full p-2 border rounded mb-4 ${
+                darkMode ? "bg-gray-700 border-gray-600" : ""
+              }`}
+              value={section}
+              onChange={handleSectionChange}
+            >
+              {SECTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
               ))}
+            </select>
+
+            {/* Prompt picker -> auto-fills the question input */}
+            <label className="block mb-2 font-semibold">Pick a prompt</label>
+            <select
+              className={`w-full p-2 border rounded mb-4 ${
+                darkMode ? "bg-gray-700 border-gray-600" : ""
+              }`}
+              value={question && PROMPTS[section]?.includes(question) ? question : ""}
+              onChange={(e) => setQuestion(e.target.value)}
+            >
+              <option value="">— Choose a prompt —</option>
+              {PROMPTS[section]?.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+
+            {/* Question text (editable after selecting prompt) */}
+            <label className="block mb-2 font-semibold">Question / Prompt</label>
+            <input
+              type="text"
+              className={`w-full p-2 border rounded mb-4 ${
+                darkMode ? "bg-gray-700 border-gray-600" : ""
+              }`}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="What are you grateful for today?"
+            />
+
+            {/* Entry */}
+            <label className="block mb-2 font-semibold">Your Entry</label>
+            <textarea
+              rows="5"
+              className={`w-full p-2 border rounded mb-2 ${
+                darkMode ? "bg-gray-700 border-gray-600" : ""
+              }`}
+              value={entry}
+              onChange={(e) => setEntry(e.target.value)}
+              placeholder="Write freely here..."
+            />
+
+            {lastSaved && (
+              <p className="text-xs text-gray-500 mb-3">
+                Saved •{" "}
+                {lastSaved.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </p>
+            )}
+
+            <label className="block mb-2 font-semibold">Mood (1–10)</label>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={mood}
+              onChange={(e) => setMood(Number(e.target.value))}
+              className="w-full mb-4"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSave}
+                className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+              >
+                Save Entry
+              </button>
+              <button
+                onClick={handleClearDraft}
+                className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400"
+              >
+                Clear Draft
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Past entries */}
+        {view === "summary" && (
+          <div>
+            <h2 className="text-xl font-semibold mb-3">Past Entries</h2>
+            {savedEntries.length === 0 ? (
+              <p className="text-gray-500">No entries yet.</p>
+            ) : (
+              savedEntries
+                .slice()
+                .reverse()
+                .map((e, i) => (
+                  <div
+                    key={i}
+                    className={`border rounded-lg p-3 mb-3 shadow-sm ${
+                      darkMode
+                        ? "bg-gray-700 border-gray-600 text-gray-100"
+                        : "bg-gray-50"
+                    }`}
+                  >
+                    <div className="text-sm text-gray-500">{e.date}</div>
+                    <div className="font-semibold">{e.section}</div>
+                    <div className="text-sm italic">{e.question}</div>
+                    <div className="mt-1">{e.entry}</div>
+                    <div className="text-xs mt-1 text-green-700">
+                      Mood: {e.mood} | Sentiment: {e.sentiment}
+                    </div>
+                  </div>
+                ))
+            )}
           </div>
         )}
-      </div>
+      </div> {/* end of inner card */}
 
-      {/* Floating install prompt */}
-      <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 50 }}
-          transition={{ duration: 0.3 }}
-          className="fixed bottom-5 right-5"
-        >
-          <InstallPrompt />
-        </motion.div>
-      </AnimatePresence>
+      {/* Google Drive Backup/Restore */}
+      <GoogleSync dataToSync={{ savedEntries, savedAffirmations }} />
     </div>
   );
+}
+
+// ---- Register service worker ----
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js");
+  });
 }

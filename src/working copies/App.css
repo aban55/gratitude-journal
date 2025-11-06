@@ -1,5 +1,7 @@
-/* Base app */
-.app-fade { animation: app-fade-in 280ms ease-out both; }
+/* === Base App === */
+.app-fade {
+  animation: app-fade-in 280ms ease-out both;
+}
 @keyframes app-fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -10,7 +12,7 @@
   transition: all 180ms ease;
 }
 
-/* -------- Parchment day page -------- */
+/* === Parchment day page === */
 .journal-page-inner {
   max-width: 100%;
   margin: 0 auto;
@@ -32,9 +34,12 @@
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 .parchment-bg .journal-entry { background: rgba(255,255,245,0.9); }
-.journal-entry:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -12px rgba(0,0,0,.25); }
+.journal-entry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -12px rgba(0,0,0,.25);
+}
 
-/* -------- Calendar grid -------- */
+/* === Calendar grid (for any fallback use) === */
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -73,14 +78,13 @@
   background: #166534;
 }
 
-/* -------- Horizontal swiper (kept for any future use) -------- */
+/* === Horizontal swiper (kept for later use) === */
 .journal-swiper {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 100%;
   gap: 16px;
   overflow-x: auto;
-  overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   padding: 8px 2px;
   border-radius: 14px;
@@ -88,3 +92,148 @@
 .journal-page { scroll-snap-align: start; }
 .journal-swiper::-webkit-scrollbar { height: 8px; }
 .journal-swiper::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 6px; }
+
+/* === Year matrix (GitHub-style, rolling 12 months) === */
+.year-matrix {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 6px 2px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(107,114,128,.3) transparent;
+}
+.year-matrix::-webkit-scrollbar { height: 6px; }
+.year-matrix::-webkit-scrollbar-thumb {
+  background: rgba(107,114,128,.3);
+  border-radius: 3px;
+}
+.year-week {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 2px;
+}
+.year-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.05);
+  background: #f3f4f6;
+  transition: transform .08s ease, outline-color .08s ease, box-shadow .08s ease;
+}
+.year-cell:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 6px rgba(22,163,74,.6);
+}
+.year-cell-selected {
+  outline: 2px solid #16a34a;
+  outline-offset: -2px;
+}
+.year-today {
+  box-shadow: inset 0 0 0 2px rgba(22,163,74,.7);
+}
+.year-month-labels {
+  position: relative;
+  display: block;
+  height: 18px;
+  margin-top: 6px;
+}
+.year-month-labels span {
+  position: absolute;
+  bottom: 0;
+  font-size: 0.7rem;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+}
+
+/* === Heatmap Toggle === */
+.heatmap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.heatmap-toggle button {
+  padding: 4px 8px;
+  border: 1px solid rgba(0,0,0,.1);
+  border-radius: 6px;
+  background: #fff;
+  transition: all 0.15s ease;
+}
+.heatmap-toggle button:hover { background: #f3f4f6; }
+.dark .heatmap-toggle button {
+  background: #1f2937;
+  color: #e5e7eb;
+  border-color: rgba(255,255,255,.15);
+}
+.dark .year-cell { border-color: rgba(255,255,255,.1); }
+
+/* === Legend below matrix === */
+.year-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+.year-legend span.box {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.05);
+}
+.year-legend .low { background: #fee2e2; }        /* low mood or few entries */
+.year-legend .mid { background: #facc15; }        /* mid mood */
+.year-legend .high { background: #16a34a; }       /* high mood */
+.year-legend .freq1 { background: #bfdbfe; }      /* light blue */
+.year-legend .freq5 { background: #1e40af; }      /* dark blue */
+
+.year-matrix {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px 0;
+  height: fit-content;
+}
+.year-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.year-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.year-cell:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+.year-cell-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+.year-month-labels {
+  display: flex;
+  justify-content: flex-start;
+  gap: 24px;
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+.year-month-labels {
+  position: relative;
+  height: 14px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+.year-month-labels .month-label {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+}

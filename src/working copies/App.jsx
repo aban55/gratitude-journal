@@ -33,8 +33,29 @@ const sections = {
     "What is one thing about my body or health I appreciate?",
     "What habit or discipline am I proud of keeping?",
     "What lesson did a past mistake teach me that helps me now?",
+    "What challenge taught me something valuable?",
+    "What habit am I proud of maintaining?",
+    "How have I improved compared to last month?",
   ],
+  "Blessings & Privileges": [
+  "What everyday comfort (home, electricity, clean water, AC, internet) made my day easier today?",
+  "Which piece of technology or tool saved me time or effort today?",
+  "What part of my education or skills helped me solve something today?",
+  "When did my health, body, or mind serve me well today?",
+  "Who are the people whose support or safety net I can rely on?",
+  "What opportunities are available to me that I sometimes take for granted?",
+  "Which books, teachers, or mentors shaped me — how did that show up today?",
+  "What financial stability or resources quietly reduced stress for me today?",
+  "Which safe spaces (home, neighbourhood, workplace, campus) allowed me to focus or rest?",
+  "What nourishing food or simple meal did I enjoy — and why did it feel good?",
+  "What privilege can I use this week to help someone else?",
+  "If I lost one convenience for a week, which would I miss most — and why am I grateful for it today?"
+],
   "Nature & Calm": [
+    "What part of my home brings me peace or comfort?",
+    "What small thing in nature caught my attention today — light, wind, birds, sky, trees?",
+    "What simple pleasure did I enjoy — food, music, warmth, quiet?",
+    "What modern convenience or tool makes life smoother?",
     "What detail in nature stood out today?",
     "What moment felt peaceful or quiet?",
     "What simple pleasure grounded me today?",
@@ -55,6 +76,13 @@ const sections = {
     "What healthy choice did I make today?",
     "How does my body show gratitude when I care for it?",
     "What signs of recovery or strength am I noticing lately?",
+  ],
+  "Perspective & Hope": [
+    "What opportunity am I grateful to have that others may not?",
+    "What am I looking forward to in the coming week?",
+    "Who or what reminds me that life is bigger than my worries?",
+    "How has a tough time in my life shaped who I am today?",
+    "What am I thankful for that I usually take for granted?",
   ],
 };
 

@@ -237,3 +237,10 @@
   font-weight: 500;
   color: #6b7280;
 }
+/* App.css (ensure this exists) */
+.parchment-bg {
+  background: #fbf5e6;
+  background-image:
+    radial-gradient(ellipse at center, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 70%),
+    linear-gradient(180deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
+}

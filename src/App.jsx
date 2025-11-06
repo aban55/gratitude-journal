@@ -204,41 +204,16 @@ function WelcomeModal({ open, onClose, onStart }) {
 
             {/* Habit Guide Section */}
             <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-  <h4 className="font-semibold text-amber-800 mb-1">🌞 Build Your Daily Habit</h4>
-  <p className="text-[15px] text-amber-800/90 leading-relaxed">
-    Take just two quiet minutes each day to pause, reflect, and note one thing you’re grateful for.
-    You’ll start noticing calm, clarity, and optimism — even on difficult days.
-  </p>
-  <p className="mt-2 text-[14px] italic text-amber-700">
-    “Consistency matters more than perfection — small reflections, every day.”
-  </p>
-
-  {/* Reminder Toggle */}
-  <div className="mt-4 flex items-center justify-between">
-    <label className="text-sm text-amber-800 font-medium flex items-center gap-2">
-      🔔 Daily Reminder
-      <input
-        type="checkbox"
-        checked={localStorage.getItem("gratitudeReminder") === "on"}
-        onChange={(e) => {
-          const enabled = e.target.checked;
-          localStorage.setItem("gratitudeReminder", enabled ? "on" : "off");
-          if (enabled) {
-            Notification.requestPermission().then((perm) => {
-              if (perm === "granted") {
-                alert("✅ Reminder activated! You'll get a gentle nudge daily.");
-              } else {
-                alert("Please allow notifications to enable daily reminders.");
-              }
-            });
-          }
-        }}
-        className="w-5 h-5 accent-amber-600"
-      />
-    </label>
-  </div>
-</div>
-
+              <h4 className="font-semibold text-amber-800 mb-1">
+                🌞 Build Your Daily Habit
+              </h4>
+              <p className="text-[15px] text-amber-800/90 leading-relaxed">
+                Take just two quiet minutes each day to pause, reflect, and note one thing you’re grateful for.
+                You’ll start noticing calm, clarity, and more optimism — even on difficult days.
+              </p>
+              <p className="mt-2 text-[14px] italic text-amber-700">
+                “Consistency matters more than perfection — small reflections, every day.”
+              </p>
             </div>
 
             <div className="mt-8 flex justify-end gap-3">
@@ -284,32 +259,6 @@ export default function App() {
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY));
 
   // Load local + theme
-  useEffect(() => {
-  const reminderOn = localStorage.getItem("gratitudeReminder") === "on";
-  if (!reminderOn) return;
-
-  const checkReminder = () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-
-    // Trigger daily reminder at 20:00 (8 PM)
-    if (hour === 20 && minute === 0) {
-      if (Notification.permission === "granted") {
-        new Notification("🌞 Gratitude Reminder", {
-          body: "Pause for a moment — what made you smile today?",
-          icon: "/icons/icon-192.png",
-        });
-      } else {
-        alert("🌞 Pause for a moment — what made you smile today?");
-      }
-    }
-  };
-
-  const interval = setInterval(checkReminder, 60000); // check every minute
-  return () => clearInterval(interval);
-}, []);
-
   useEffect(() => {
     const s = localStorage.getItem(STORAGE_KEY);
     if (s) {

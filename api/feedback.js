@@ -3,7 +3,7 @@
 // Environment: Vercel Serverless Function (Node >=18)
 
 const GAS_WEBHOOK =
-  "https://script.google.com/macros/s/AKfycbwzqAJ13NLdpAxDtb5UYeenSRM8QO0_yrFGOP2gM_TvwE1woAaqgW-WyhxdNX64wMTC/exec";
+  "https://script.google.com/macros/s/AKfycby-UzCm2-GqR4Nts31CSd4wUlugdorqH2EF3FSA52BByJn8A_z1G62RruIZne67a5Vc/exec";
 
 /** Helper: read raw request body */
 function getRawBody(req) {

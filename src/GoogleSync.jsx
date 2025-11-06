@@ -2,17 +2,16 @@ import React, { useEffect, useRef, useState } from "react";
 
 /**
  * GoogleSync.jsx
- * Full bidirectional sync between LocalStorage and Google Drive.
- * - Restores immediately from local
- * - Silently restores & merges from Drive
- * - Merges entries + affirmations (no overwrite)
- * - Automatically reauths every 55min
- * - Includes manual export/import (offline safe)
+ * Bidirectional sync between LocalStorage and Google Drive.
+ * - Auto silent login + token refresh
+ * - Restores & merges entries + affirmations (no overwrite)
+ * - Uploads local → Drive if no backup found
+ * - Local JSON export/import fallback
  */
 
 const CLIENT_ID =
   "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
-const SCOPES = "https://www.googleapis.com/auth/drive"; // ✅ Full Drive scope
+const SCOPES = "https://www.googleapis.com/auth/drive"; // full Drive scope
 const BACKUP_NAME = "gratitude_journal_backup.json";
 
 export default function GoogleSync({ dataToSync, onRestore }) {
@@ -31,9 +30,8 @@ export default function GoogleSync({ dataToSync, onRestore }) {
   const tokenClientRef = useRef(null);
   const backupFileIdRef = useRef(null);
 
-  // ---------------- Init Google Client ----------------
+  // ---------------- INIT ----------------
   useEffect(() => {
-    let cancelled = false;
     const init = async () => {
       try {
         // Load Google Identity
@@ -65,9 +63,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           });
         }
 
-        if (cancelled) return;
-
-        // Init OAuth2 client
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
           scope: SCOPES,
@@ -81,26 +76,18 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           },
         });
 
-        // Restore from local first
         tryLocalRestore();
-
-        // Silent sign-in
         if (accessToken) fetchUserProfile(accessToken);
         else tokenClientRef.current.requestAccessToken({ prompt: "" });
-      } catch (e) {
-        console.warn("[GoogleSync] init error:", e);
-        setStatus("offline");
+      } catch (err) {
+        console.warn("[GoogleSync] init error:", err);
       }
     };
-
     init();
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------------- Silent token refresh ----------------
+  // Auto token refresh every 55 min
   useEffect(() => {
     if (!tokenClientRef.current || !accessToken) return;
     const t = setInterval(() => {
@@ -109,21 +96,21 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     return () => clearInterval(t);
   }, [accessToken]);
 
-  // ---------------- Local Restore ----------------
+  // ---------------- LOCAL RESTORE ----------------
   const tryLocalRestore = () => {
     try {
       const entries = JSON.parse(localStorage.getItem("gratitudeEntries") || "[]");
       const affirmations = JSON.parse(localStorage.getItem("savedAffirmations") || "[]");
       if ((entries.length || affirmations.length) && onRestore) {
         onRestore({ entries, affirmations });
-        console.log("📁 [GoogleSync] Restored from local backup.");
+        console.log("📁 [GoogleSync] Restored local backup.");
       }
     } catch {
       console.warn("[GoogleSync] Local restore failed.");
     }
   };
 
-  // ---------------- Fetch Profile ----------------
+  // ---------------- PROFILE ----------------
   const fetchUserProfile = async (token) => {
     try {
       const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -140,14 +127,32 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
-  // ---------------- Locate Backup ----------------
+  // ---------------- LOCATE BACKUP (with retry) ----------------
   const locateBackup = async () => {
+    if (!accessToken) return null;
     if (backupFileIdRef.current) return backupFileIdRef.current;
+
     try {
       const res = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_NAME}' and trashed=false&spaces=drive&fields=files(id,name,modifiedTime)`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
+
+      if (res.status === 401 && tokenClientRef.current) {
+        console.warn("[GoogleSync] Token expired — refreshing...");
+        await new Promise((resolve) => {
+          tokenClientRef.current.callback = async (resp) => {
+            if (resp?.access_token) {
+              localStorage.setItem("gj_access_token", resp.access_token);
+              setAccessToken(resp.access_token);
+              resolve();
+            }
+          };
+          tokenClientRef.current.requestAccessToken({ prompt: "" });
+        });
+        return locateBackup(); // retry once
+      }
+
       if (!res.ok) throw new Error(`Drive list failed: ${res.status}`);
       const data = await res.json();
       const file = data.files?.[0];
@@ -157,14 +162,12 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       }
       return null;
     } catch (e) {
-      if (e.message.includes("403"))
-        console.warn("[GoogleSync] locateBackup: insufficient permission (check OAuth scope).");
-      else console.warn("[GoogleSync] locateBackup error:", e);
+      console.warn("[GoogleSync] locateBackup error:", e);
       return null;
     }
   };
 
-  // ---------------- Merge Logic ----------------
+  // ---------------- MERGE ----------------
   const mergeData = (localData, driveData) => {
     if (!driveData) return localData;
     const merged = { entries: [], affirmations: [] };
@@ -193,7 +196,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     return merged;
   };
 
-  // ---------------- Restore + Merge ----------------
+  // ---------------- RESTORE + MERGE ----------------
   const restoreAndMerge = async (token) => {
     try {
       const localData = {
@@ -212,6 +215,12 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (res.status === 401) {
+        console.warn("[GoogleSync] Token expired during restore — retrying...");
+        await tokenClientRef.current.requestAccessToken({ prompt: "" });
+        return restoreAndMerge(localStorage.getItem("gj_access_token"));
+      }
+
       if (!res.ok) throw new Error(`Drive download failed: ${res.status}`);
       const driveData = await res.json();
       const merged = mergeData(localData, driveData);
@@ -221,7 +230,8 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       localStorage.setItem("gratitude_local_backup", JSON.stringify(merged));
 
       if (onRestore) onRestore(merged);
-      setLastRestored(new Date().toLocaleString());
+      const now = new Date().toLocaleString();
+      setLastRestored(now);
       localStorage.setItem("gj_last_restored", new Date().toISOString());
 
       console.log("☁️ [GoogleSync] Merged and restored from Drive.");
@@ -231,7 +241,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
-  // ---------------- Upload Backup ----------------
+  // ---------------- UPLOAD ----------------
   const uploadToDrive = async (payloadData) => {
     if (!accessToken) return;
     try {
@@ -272,7 +282,8 @@ export default function GoogleSync({ dataToSync, onRestore }) {
 
       localStorage.setItem("gratitude_local_backup", payload);
       localStorage.setItem("gj_last_synced", new Date().toISOString());
-      setLastSynced(new Date().toLocaleString());
+      const now = new Date().toLocaleString();
+      setLastSynced(now);
       setStatus("up_to_date");
       console.log("✅ [GoogleSync] Backup synced to Drive.");
     } catch (e) {
@@ -281,7 +292,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
-  // ---------------- Handlers ----------------
+  // ---------------- UI + HANDLERS ----------------
   const restoreFromDrive = () => accessToken && restoreAndMerge(accessToken);
   const signIn = () =>
     tokenClientRef.current?.requestAccessToken({ prompt: "consent" });
@@ -292,7 +303,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     setStatus("offline");
   };
 
-  // ---------------- Auto Sync ----------------
   useEffect(() => {
     if (!accessToken) return;
     const t = setTimeout(() => uploadToDrive(), 4000);

@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 
 /**
- * GoogleSync.jsx (final build)
- * - Full bidirectional sync between LocalStorage and Google Drive
- * - Silent login + token refresh
- * - Merge without overwrite
- * - Restore on startup + reliable upload
- * - Includes local export/import backup
- * - No gapi client dependency
+ * GoogleSync.jsx
+ * - Startup: restore local, then silent Drive restore if signed in
+ * - Bidirectional merge (no overwrite), de-dup by stable keys
+ * - Single Drive file (no duplicates) via encoded query + PATCH update
+ * - Local export/import preserved
+ * - Minimal console noise
  */
 
 const CLIENT_ID =
@@ -31,11 +30,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
   const tokenClientRef = useRef(null);
   const backupFileIdRef = useRef(null);
 
-  // ---------------- INIT ----------------
+  // ---------- INIT ----------
   useEffect(() => {
     const init = async () => {
       try {
-        // Load Google Identity client
         if (!window.google?.accounts) {
           await new Promise((res) => {
             const s = document.createElement("script");
@@ -48,7 +46,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
           scope: SCOPES,
-          prompt: "",
+          prompt: "", // silent if previously granted
           callback: async (resp) => {
             if (resp?.access_token) {
               localStorage.setItem("gj_access_token", resp.access_token);
@@ -58,7 +56,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           },
         });
 
+        // Load local immediately (good UX offline)
         tryLocalRestore();
+
+        // Silent token reuse if possible
         if (accessToken) fetchUserProfile(accessToken);
         else tokenClientRef.current.requestAccessToken({ prompt: "" });
       } catch (err) {
@@ -69,21 +70,20 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------------- LOCAL RESTORE ----------------
+  // ---------- LOCAL RESTORE ----------
   const tryLocalRestore = () => {
     try {
       const entries = JSON.parse(localStorage.getItem("gratitudeEntries") || "[]");
       const affirmations = JSON.parse(localStorage.getItem("savedAffirmations") || "[]");
       if ((entries.length || affirmations.length) && onRestore) {
-        onRestore({ entries, affirmations });
-        console.log("📁 [GoogleSync] Restored local backup.");
+        onRestore({ entries: [...entries], affirmations: [...affirmations] });
       }
     } catch {
-      console.warn("[GoogleSync] Local restore failed.");
+      /* noop */
     }
   };
 
-  // ---------------- PROFILE ----------------
+  // ---------- PROFILE ----------
   const fetchUserProfile = async (token) => {
     try {
       const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -92,40 +92,27 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       const u = await res.json();
       if (!u?.email) throw new Error("No profile");
       setUser(u);
-      console.log("[GoogleSync] Signed in as:", u.email);
       await restoreAndMerge(token);
-    } catch (e) {
-      console.warn("[GoogleSync] Profile fetch failed:", e);
+    } catch {
       setUser(null);
     }
   };
 
-  // ---------------- LOCATE BACKUP ----------------
+  // ---------- FIND BACKUP FILE (single file; no duplicates) ----------
   const locateBackup = async () => {
     if (!accessToken) return null;
     if (backupFileIdRef.current) return backupFileIdRef.current;
 
     try {
-      const query = encodeURIComponent(`name='${BACKUP_NAME}' and trashed=false`);
-const res = await fetch(
-  `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive&fields=files(id,name,modifiedTime)`,
-  { headers: { Authorization: `Bearer ${accessToken}` } }
-);
+      // IMPORTANT: encode query so we actually find the existing file
+      const q = encodeURIComponent(`name='${BACKUP_NAME}' and trashed=false`);
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
 
-
-      // Refresh on token expiry
       if (res.status === 401 && tokenClientRef.current) {
-        console.warn("[GoogleSync] Token expired — refreshing...");
-        await new Promise((resolve) => {
-          tokenClientRef.current.callback = (resp) => {
-            if (resp?.access_token) {
-              localStorage.setItem("gj_access_token", resp.access_token);
-              setAccessToken(resp.access_token);
-              resolve();
-            }
-          };
-          tokenClientRef.current.requestAccessToken({ prompt: "" });
-        });
+        await refreshToken();
         return locateBackup();
       }
 
@@ -143,25 +130,39 @@ const res = await fetch(
     }
   };
 
-  // ---------------- MERGE ----------------
+  const refreshToken = () =>
+    new Promise((resolve) => {
+      tokenClientRef.current.callback = (resp) => {
+        if (resp?.access_token) {
+          localStorage.setItem("gj_access_token", resp.access_token);
+          setAccessToken(resp.access_token);
+        }
+        resolve();
+      };
+      tokenClientRef.current.requestAccessToken({ prompt: "" });
+    });
+
+  // ---------- MERGE ----------
   const mergeData = (localData, driveData) => {
-    if (!driveData) return localData;
+    if (!driveData) return localData || { entries: [], affirmations: [] };
     const merged = { entries: [], affirmations: [] };
 
-    const allEntries = [...(localData.entries || []), ...(driveData.entries || [])];
+    // Entries: prefer id if present; else composite
+    const allEntries = [...(localData?.entries || []), ...(driveData?.entries || [])];
     const seen = new Set();
     for (const e of allEntries) {
-      const key = `${e.date}-${e.section}-${e.question}-${e.entry}`;
+      const key = e.id || `${e.date}|${e.section}|${e.question}|${e.entry}`;
       if (!seen.has(key)) {
         seen.add(key);
         merged.entries.push(e);
       }
     }
 
-    const allAff = [...(localData.affirmations || []), ...(driveData.affirmations || [])];
+    // Affirmations
+    const allAff = [...(localData?.affirmations || []), ...(driveData?.affirmations || [])];
     const seenAff = new Set();
     for (const a of allAff) {
-      const key = a.quote || a.text;
+      const key = a.quote || a.text || JSON.stringify(a);
       if (!seenAff.has(key)) {
         seenAff.add(key);
         merged.affirmations.push(a);
@@ -172,7 +173,7 @@ const res = await fetch(
     return merged;
   };
 
-  // ---------------- RESTORE + MERGE ----------------
+  // ---------- RESTORE + MERGE + RESYNC ----------
   const restoreAndMerge = async (token) => {
     try {
       const localData = {
@@ -182,7 +183,7 @@ const res = await fetch(
 
       const fileId = await locateBackup();
       if (!fileId) {
-        console.log("[GoogleSync] No Drive backup, uploading local data...");
+        // First time: push local up
         await uploadToDrive(localData);
         return;
       }
@@ -196,98 +197,86 @@ const res = await fetch(
       const driveData = await res.json();
       const merged = mergeData(localData, driveData);
 
+      // Update local + app state
       localStorage.setItem("gratitudeEntries", JSON.stringify(merged.entries));
       localStorage.setItem("savedAffirmations", JSON.stringify(merged.affirmations));
       localStorage.setItem("gratitude_local_backup", JSON.stringify(merged));
-      if (onRestore) onRestore(merged);
+      if (onRestore) onRestore({ ...merged }); // clone to trigger React re-render
 
       const now = new Date().toLocaleString();
       setLastRestored(now);
       localStorage.setItem("gj_last_restored", new Date().toISOString());
 
-      console.log("☁️ [GoogleSync] Merged and restored from Drive.");
+      // Keep Drive consistent with merged view
       await uploadToDrive(merged);
     } catch (e) {
       console.warn("[GoogleSync] restoreAndMerge failed:", e);
     }
   };
 
-  // ---------------- UPLOAD (fixed) ----------------
+  // ---------- UPLOAD (create/update same file) ----------
   const uploadToDrive = async (payloadData) => {
     if (!accessToken) return;
     try {
       setStatus("syncing");
       const payload = JSON.stringify(payloadData || dataToSync || {}, null, 2);
-      const blob = new Blob([payload], { type: "application/json" });
-      let fileId = await locateBackup();
+      const fileId = await locateBackup();
 
-      // Check token validity
-      const checkAuth = await fetch(
+      // Ensure token is valid
+      const info = await fetch(
         "https://www.googleapis.com/oauth2/v2/tokeninfo?access_token=" + accessToken
       );
-      if (!checkAuth.ok && tokenClientRef.current) {
-        console.warn("[GoogleSync] Token invalid — refreshing...");
-        await new Promise((resolve) => {
-          tokenClientRef.current.callback = (resp) => {
-            if (resp?.access_token) {
-              localStorage.setItem("gj_access_token", resp.access_token);
-              setAccessToken(resp.access_token);
-              resolve();
-            }
-          };
-          tokenClientRef.current.requestAccessToken({ prompt: "" });
-        });
+      if (!info.ok) {
+        await refreshToken();
       }
 
       if (fileId) {
-        // Update file content
-        const updateRes = await fetch(
+        // Update file content (no new files)
+        const res = await fetch(
           `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
           {
             method: "PATCH",
             headers: {
-              Authorization: `Bearer ${accessToken}`,
+              Authorization: `Bearer ${localStorage.getItem("gj_access_token")}`,
               "Content-Type": "application/json",
             },
             body: payload,
           }
         );
-        if (!updateRes.ok) throw new Error(`Drive update failed: ${updateRes.status}`);
+        if (!res.ok) throw new Error(`Drive update failed: ${res.status}`);
       } else {
-        // Create new file
+        // Create once
         const metadata = { name: BACKUP_NAME, mimeType: "application/json" };
         const form = new FormData();
         form.append(
           "metadata",
           new Blob([JSON.stringify(metadata)], { type: "application/json" })
         );
-        form.append("file", blob);
+        form.append("file", new Blob([payload], { type: "application/json" }));
 
-        const createRes = await fetch(
+        const res = await fetch(
           "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
           {
             method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers: { Authorization: `Bearer ${localStorage.getItem("gj_access_token")}` },
             body: form,
           }
         );
-        const created = await createRes.json();
+        const created = await res.json();
         if (created?.id) backupFileIdRef.current = created.id;
       }
 
       localStorage.setItem("gratitude_local_backup", payload);
       localStorage.setItem("gj_last_synced", new Date().toISOString());
-      const now = new Date().toLocaleString();
-      setLastSynced(now);
+      setLastSynced(new Date().toLocaleString());
       setStatus("up_to_date");
-      console.log("✅ [GoogleSync] Backup synced to Drive.");
     } catch (e) {
       console.warn("[GoogleSync] uploadToDrive failed:", e);
       setStatus("error");
     }
   };
 
-  // ---------------- UI ACTIONS ----------------
+  // ---------- UI ACTIONS ----------
   const restoreFromDrive = () => accessToken && restoreAndMerge(accessToken);
   const signIn = () => tokenClientRef.current?.requestAccessToken({ prompt: "consent" });
   const signOut = () => {
@@ -297,15 +286,15 @@ const res = await fetch(
     setStatus("offline");
   };
 
-  // Auto-sync when data changes
+  // Auto-sync on data change with debounce
   useEffect(() => {
     if (!accessToken) return;
-    const t = setTimeout(() => uploadToDrive(), 4000);
+    const t = setTimeout(() => uploadToDrive(), 1200);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(dataToSync), accessToken]);
 
-  // ---------------- UI ----------------
+  // ---------- UI ----------
   return (
     <div className="space-y-3">
       {/* Sync Banner */}
@@ -377,18 +366,14 @@ const res = await fetch(
       {/* Local Import / Export */}
       <div className="mt-4 border-t pt-3 text-sm">
         <h4 className="font-medium mb-1">💾 Local Backup</h4>
-        <p className="text-xs text-gray-500 mb-2">
-          Offline? Export or import manually anytime.
-        </p>
+        <p className="text-xs text-gray-500 mb-2">Offline? Export or import manually anytime.</p>
         <div className="flex flex-wrap gap-2 justify-center">
           <button
             onClick={() => {
               const data = JSON.stringify(
                 {
                   entries: JSON.parse(localStorage.getItem("gratitudeEntries") || "[]"),
-                  affirmations: JSON.parse(
-                    localStorage.getItem("savedAffirmations") || "[]"
-                  ),
+                  affirmations: JSON.parse(localStorage.getItem("savedAffirmations") || "[]"),
                   lastModified: new Date().toISOString(),
                 },
                 null,
@@ -419,7 +404,7 @@ const res = await fetch(
                 reader.onload = (evt) => {
                   try {
                     const imported = JSON.parse(evt.target.result);
-                    if (onRestore) onRestore(imported);
+                    // Save locally
                     localStorage.setItem(
                       "gratitudeEntries",
                       JSON.stringify(imported.entries || [])
@@ -432,7 +417,11 @@ const res = await fetch(
                       "gratitude_local_backup",
                       JSON.stringify(imported)
                     );
-                    alert("✅ Local backup restored successfully!");
+                    // Reflect in UI
+                    onRestore && onRestore({ ...imported });
+                    // Push to Drive too (keep all devices consistent)
+                    uploadToDrive(imported);
+                    alert("✅ Local backup restored.");
                   } catch {
                     alert("❌ Invalid JSON file");
                   }

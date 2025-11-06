@@ -102,7 +102,6 @@ const sections = {
   ]
 };
 
-
 function parseDate(src) {
   if (!src) return null;
   if (src instanceof Date) return isNaN(src) ? null : src;
@@ -162,6 +161,19 @@ function triggerDownload(blob, name) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function randOf(arr, exclude = null) {
+  if (!Array.isArray(arr) || arr.length === 0) return "";
+  if (arr.length === 1) return arr[0];
+  let pick = arr[Math.floor(Math.random() * arr.length)];
+  if (exclude && arr.length > 1) {
+    let guard = 0;
+    while (pick === exclude && guard < 10) {
+      pick = arr[Math.floor(Math.random() * arr.length)];
+      guard++;
+    }
+  }
+  return pick;
 }
 
 /* =========================
@@ -325,6 +337,68 @@ function WelcomeModal({
 }
 
 /* =========================
+   Reminders Quick Dialog
+========================= */
+function RemindersDialog({
+  open,
+  onClose,
+  reminderEnabled,
+  reminderTime,
+  setReminderEnabled,
+  setReminderTime,
+  setToast,
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[999] bg-black/40 flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-xl w-[92%] max-w-md p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold">⚙️ Reminders</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+        <div className="space-y-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={reminderEnabled}
+              onChange={(e) => {
+                setReminderEnabled(e.target.checked);
+                setToast(e.target.checked ? "🌼 Reminder enabled" : "Reminder off");
+              }}
+            />
+            <span>Enable daily reminder</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Time</span>
+            <select
+              value={reminderTime}
+              onChange={(e) => {
+                setReminderTime(e.target.value);
+                setToast(`🌼 Reminder set for ${formatTimeLabel(e.target.value)}`);
+              }}
+              className="border rounded-md px-2 py-1"
+              disabled={!reminderEnabled}
+            >
+              <option value="07:00">7:00 AM</option>
+              <option value="12:00">12:00 PM</option>
+              <option value="20:00">8:00 PM</option>
+              <option value="21:00">9:00 PM</option>
+              <option value="22:00">10:00 PM</option>
+            </select>
+          </div>
+          <p className="text-xs text-gray-600">
+            If notifications are blocked, you’ll see an in-app alert: “🌿 Pause for a moment — what made you smile today?”
+          </p>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={onClose}>Done</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
    Main App
 ========================= */
 export default function App() {
@@ -352,6 +426,7 @@ export default function App() {
     () => localStorage.getItem(REMINDER_TIME_KEY) || "20:00"
   );
   const [toast, setToast] = useState("");
+  const [showReminders, setShowReminders] = useState(false);
 
   // Load local + theme
   useEffect(() => {
@@ -422,6 +497,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, [reminderEnabled, reminderTime]);
 
+  // Auto-pick a random question initially and whenever the section changes
+  useEffect(() => {
+    setQuestion((prev) => {
+      const next = randOf(sections[section], prev);
+      return next || "";
+    });
+    // clear the text when switching prompts to nudge a fresh reflection
+    setEntry("");
+  }, [section]);
+
   // Merge Drive restore without overwriting local (id wins; latest fields kept)
   function handleRestoreFromDrive(payload) {
     if (!payload || !Array.isArray(payload.entries)) return;
@@ -440,6 +525,14 @@ export default function App() {
     setEntries(mergedList);
   }
 
+  // Shuffle current prompt
+  function shufflePrompt() {
+    const pool = sections[section] || [];
+    const next = randOf(pool, question);
+    setQuestion(next || "");
+    // preserve existing entry text; user may be exploring prompts first
+  }
+
   /* Create new entry */
   function handleSave() {
     if (!entry.trim() || !question) return;
@@ -456,8 +549,12 @@ export default function App() {
     };
     setEntries((p) => [...p, e]);
     setEntry("");
-    setQuestion("");
     setMood(5);
+    // auto-refresh a new random prompt in the same section after save
+    const nextQ = randOf(sections[section], question);
+    setQuestion(nextQ || "");
+    setToast("✅ Saved");
+    setTimeout(() => setToast(""), 1500);
   }
 
   /* Edit/Delete */
@@ -575,16 +672,25 @@ export default function App() {
       {/* Header */}
       <header className="flex justify-between items-center mb-2">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button
-          variant="outline"
-          onClick={() => {
-            const next = !dark;
-            setDark(next);
-            localStorage.setItem(THEME_KEY, next ? "dark" : "light");
-          }}
-        >
-          {dark ? "☀️ Light" : "🌙 Dark"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowReminders(true)}
+            title="Reminders"
+          >
+            ⚙️ Reminders
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const next = !dark;
+              setDark(next);
+              localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+            }}
+          >
+            {dark ? "☀️ Light" : "🌙 Dark"}
+          </Button>
+        </div>
       </header>
       <p className="text-center text-gray-500 mb-4 italic">“{quote}”</p>
 
@@ -601,15 +707,21 @@ export default function App() {
           <CardContent className="space-y-4">
             <Select
               value={section}
-              onChange={(v) => { setSection(v); setQuestion(""); }}
+              onChange={(v) => { setSection(v); }}
               options={Object.keys(sections)}
             />
-            <Select
-              value={question}
-              onChange={setQuestion}
-              options={["", ...sections[section]]}
-              placeholder="Pick a question"
-            />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Select
+                  value={question}
+                  onChange={setQuestion}
+                  options={["", ...(sections[section] || [])]}
+                  placeholder="Pick a question"
+                />
+                <Button variant="outline" onClick={shufflePrompt} title="Shuffle Prompt">🔀 Shuffle Prompt</Button>
+              </div>
+            </div>
+
             {question && (
               <>
                 <Textarea
@@ -656,41 +768,41 @@ export default function App() {
             </CardContent>
           </Card>
 
-            <Card>
-              <CardContent>
-                <h3 className="font-semibold mb-2">All entries (latest first)</h3>
-                {pastSorted.length === 0 ? (
-                  <p className="text-sm text-gray-500">No entries yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {pastSorted.map((e) => (
-                      <div key={e.id} className="rounded-lg border p-3">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                          <div>
-                            <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
-                            <div className="text-sm text-gray-600">
-                              Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
-                            </div>
-                            <div className="mt-1 font-medium">{e.question}</div>
-                            <div className="mt-1 whitespace-pre-wrap text-sm">{e.entry}</div>
+          <Card>
+            <CardContent>
+              <h3 className="font-semibold mb-2">All entries (latest first)</h3>
+              {pastSorted.length === 0 ? (
+                <p className="text-sm text-gray-500">No entries yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {pastSorted.map((e) => (
+                    <div key={e.id} className="rounded-lg border p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                        <div>
+                          <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
+                          <div className="text-sm text-gray-600">
+                            Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
                           </div>
-                          <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
-                            <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
-                          </div>
+                          <div className="mt-1 font-medium">{e.question}</div>
+                          <div className="mt-1 whitespace-pre-wrap text-sm">{e.entry}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                          <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2 mt-4">
-                  <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
-                  <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
-                  <Button onClick={exportPdf}>Export .PDF</Button>
+                    </div>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
+              )}
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+                <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+                <Button onClick={exportPdf}>Export .PDF</Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -725,6 +837,17 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Reminders Quick Dialog */}
+      <RemindersDialog
+        open={showReminders}
+        onClose={() => setShowReminders(false)}
+        reminderEnabled={reminderEnabled}
+        reminderTime={reminderTime}
+        setReminderEnabled={setReminderEnabled}
+        setReminderTime={setReminderTime}
+        setToast={setToast}
+      />
 
       {/* Footer */}
       <div className="flex justify-between items-center mt-8">

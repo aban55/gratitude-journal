@@ -387,11 +387,15 @@ function WelcomeModal({
               If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
               Feedback, if you share it, is separate and contains no journal content.
               <button
-                onClick={onOpenFeedback}
-                className="ml-2 text-amber-700 underline hover:text-amber-900"
-              >
-                Leave feedback →
-              </button>
+  onClick={() => {
+    onOpenFeedback();
+    setShowAbout(false); // optional: ensure modal overlay stays consistent
+  }}
+  className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
+>
+  Leave feedback →
+</button>
+
             </div>
           </>
         ) : (
@@ -427,11 +431,15 @@ function WelcomeModal({
   If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
   Feedback, if you share it, is separate and contains no journal content.
   <button
-    onClick={onOpenFeedback}
-    className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
-  >
-    Leave feedback →
-  </button>
+  onClick={() => {
+    onOpenFeedback();
+    setShowAbout(false); // optional: ensure modal overlay stays consistent
+  }}
+  className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
+>
+  Leave feedback →
+</button>
+
 </div>
 
           </>

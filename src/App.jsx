@@ -4,17 +4,10 @@ import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
 import { Select } from "./ui/Select.jsx";
 import { Slider } from "./ui/Slider.jsx";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import GoogleSync from "./GoogleSync.jsx";
 import InstallPrompt from "./InstallPrompt.jsx";
+import SummaryPanel from "./SummaryPanel.jsx";
+import jsPDF from "jspdf";
 
 // 🌿 Intro quote pool
 const quotes = [
@@ -26,7 +19,7 @@ const quotes = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-// 🌻 Sections and prompts
+// 🌻 Sections and prompts (kept from your build)
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -80,7 +73,7 @@ const sections = {
   ],
 };
 
-// 💬 Mood label
+// 💬 Mood label (kept)
 function moodLabel(mood) {
   if (mood <= 3) return "😞 Sad / Low";
   if (mood <= 6) return "😐 Neutral";
@@ -88,7 +81,7 @@ function moodLabel(mood) {
   return "😄 Uplifted";
 }
 
-// 🧠 Sentiment
+// 🧠 Sentiment (kept)
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
@@ -104,18 +97,6 @@ function analyzeSentiment(text, mood) {
   return "😟 Stressed";
 }
 
-// 🌈 Affirmation
-function affirmationFor(sentiment) {
-  const A = {
-    "😊 Positive": ["Keep radiating gratitude.", "You’re glowing with joy."],
-    "🙂 Content": ["Peace is your quiet strength.", "You are calm and balanced."],
-    "😐 Neutral": ["Even slow days help you grow.", "Stillness is also progress."],
-    "😟 Stressed": ["This too shall pass.", "Breathe. You’ve handled worse."],
-  };
-  const opts = A[sentiment] || ["Stay thankful."];
-  return opts[Math.floor(Math.random() * opts.length)];
-}
-
 export default function App() {
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
@@ -127,30 +108,30 @@ export default function App() {
   const [mood, setMood] = useState(5);
   const [entries, setEntries] = useState([]);
 
-  // Modal Editing
+  // Modal Editing (kept)
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  // Load local theme + entries
+  // Load local theme + entries (kept)
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
-
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
 
-  // Save entry
+  // Save entry (kept)
   const handleSave = () => {
     if (!entry.trim() || !question) return;
     const sentiment = analyzeSentiment(entry, mood);
     const e = {
       id: Date.now(),
       date: new Date().toLocaleString(),
+      iso: new Date().toISOString(),
       section,
       question,
       entry,
@@ -163,16 +144,15 @@ export default function App() {
     setMood(5);
   };
 
-  // Delete
+  // Delete (kept)
   const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
 
-  // Modal edit
+  // Modal edit (kept)
   const openEdit = (item) => {
     setEditing(item);
     setEditText(item.entry);
     setEditMood(item.mood);
   };
-
   const saveEdit = () => {
     if (!editing) return;
     const sentiment = analyzeSentiment(editText, editMood);
@@ -184,7 +164,7 @@ export default function App() {
     setEditing(null);
   };
 
-  // Export TXT
+  // Export TXT/CSV (kept)
   const exportTxt = () => {
     const content = entries
       .map(
@@ -198,8 +178,6 @@ export default function App() {
     link.download = "Gratitude_Journal.txt";
     link.click();
   };
-
-  // Export CSV
   const exportCsv = () => {
     const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
     const rows = entries.map((e) => [
@@ -218,34 +196,62 @@ export default function App() {
     link.click();
   };
 
-  // Summary
-  const summary = useMemo(() => {
-    if (!entries.length) return null;
-    const last7 = entries.slice(-7);
-    const avgMood = (last7.reduce((a, e) => a + e.mood, 0) / last7.length).toFixed(1);
-    const trend = entries.map((e) => ({ date: e.date, mood: e.mood }));
-    const sentiment = entries.at(-1)?.sentiment || "🙂 Content";
-    const tip = affirmationFor(sentiment);
-    return { avgMood, trend, sentiment, tip };
-  }, [entries]);
+  // Export PDF (new; SummaryPanel also has a fallback)
+  const exportJournalPDF = async () => {
+    const pdf = new jsPDF("p", "pt", "a4");
+    const marginX = 40, marginY = 60, lineH = 20;
+    let y = marginY;
 
-  // Handle restore from GoogleSync: update React state immediately (cross-device)
-  const handleRestore = (restored) => {
-    if (restored?.entries) {
-      // clone so React sees a new reference
-      setEntries([...restored.entries]);
+    pdf.setFont("Times", "normal");
+    pdf.setFontSize(16);
+    pdf.text("🌿 My Gratitude Journal", marginX, y);
+    y += 26;
+
+    // group by date asc
+    const byDate = {};
+    for (const e of entries) {
+      const key = (e.iso ? new Date(e.iso) : new Date(e.date)).toLocaleDateString();
+      (byDate[key] ||= []).push(e);
     }
+    const sortedDates = Object.keys(byDate).sort((a,b)=>new Date(a)-new Date(b));
+    for (const d of sortedDates) {
+      if (y + 60 > pdf.internal.pageSize.height) { pdf.addPage(); y = marginY; }
+      pdf.setFontSize(12); pdf.setTextColor(34,139,34); pdf.text(d, marginX, y); y += 18;
+      for (const e of byDate[d]) {
+        if (y + 90 > pdf.internal.pageSize.height) { pdf.addPage(); y = marginY; }
+        pdf.setTextColor(0,0,0); pdf.setFontSize(11);
+        pdf.text(`Section: ${e.section}`, marginX, y); y+=lineH;
+        pdf.text(`Mood: ${e.mood}/10 | ${e.sentiment}`, marginX, y); y+=lineH;
+        pdf.setFont("Times", "bold"); pdf.text(`Q: ${e.question}`, marginX, y); y+=lineH;
+        pdf.setFont("Times", "normal");
+        const lines = pdf.splitTextToSize(e.entry, 520);
+        pdf.text(lines, marginX, y); y+= lines.length*lineH + 14;
+      }
+    }
+    pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
+  // Restore from Drive (kept, but ensure merge by id)
+  const handleRestore = (restored) => {
+    if (!restored?.entries) return;
+    const incoming = restored.entries;
+    const map = new Map(entries.map(e => [e.id, e]));
+    for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
+    const merged = Array.from(map.values()).sort((a,b)=> (a.id||0)-(b.id||0));
+    setEntries(merged);
   };
 
   return (
     <div
-      className={`min-h-screen p-6 max-w-3xl mx-auto ${
+      className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${
         dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
       }`}
     >
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button variant="outline" onClick={() => setDark((d) => !d)}>
+        <Button variant="outline" onClick={() => {
+          const next = !dark; setDark(next); localStorage.setItem("gj_theme", next ? "dark" : "light");
+        }}>
           {dark ? "☀️ Light" : "🌙 Dark"}
         </Button>
       </div>
@@ -254,12 +260,6 @@ export default function App() {
         Save short reflections daily. Track mood & insights weekly.
       </p>
       <p className="italic text-center text-green-600 mb-4">“{quote}”</p>
-
-      {/* Suggested sections (tiny nudge) */}
-      <p className="text-center text-sm text-gray-500 mb-2">
-        Try rotating topics: <em>People & Relationships</em>, <em>Self & Growth</em>,
-        <em> Nature & Calm</em>, <em>Work & Purpose</em>, <em>Health</em>, <em>Hope</em>.
-      </p>
 
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
@@ -277,16 +277,13 @@ export default function App() {
         </Button>
       </div>
 
-      {/* JOURNAL */}
+      {/* JOURNAL (kept) */}
       {view === "journal" && (
         <Card>
           <CardContent className="space-y-4">
             <Select
               value={section}
-              onChange={(v) => {
-                setSection(v);
-                setQuestion("");
-              }}
+              onChange={(v) => { setSection(v); setQuestion(""); }}
               options={Object.keys(sections)}
             />
             <Select
@@ -315,116 +312,82 @@ export default function App() {
         </Card>
       )}
 
-      {/* SUMMARY */}
-      {view === "summary" && summary && (
+      {/* SUMMARY — now uses upgraded SummaryPanel */}
+      {view === "summary" && (
         <Card>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <h2 className="text-2xl font-semibold">Weekly Summary</h2>
-            <p>
-              Average mood: <strong>{summary.avgMood}/10</strong>
-            </p>
-
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={summary.trend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis domain={[0, 10]} />
-                <Tooltip />
-                <Line type="monotone" dataKey="mood" stroke="#16a34a" strokeWidth={2} dot />
-              </LineChart>
-            </ResponsiveContainer>
-
-            <div className="bg-green-50 border-l-4 border-green-400 p-3 rounded">
-              <p className="font-semibold text-green-800">🌞 Reflection Tip:</p>
-              <p className="italic text-green-700">“{summary.tip}”</p>
-            </div>
-
+            <SummaryPanel
+              entries={entries}
+              darkMode={dark}
+              onExportPDF={exportJournalPDF}
+            />
             <div className="flex gap-2">
-              <Button onClick={exportTxt} variant="outline">
-                Export .TXT
-              </Button>
-              <Button onClick={exportCsv} variant="outline">
-                Export .CSV
-              </Button>
+              <Button onClick={exportTxt} variant="outline">Export .TXT</Button>
+              <Button onClick={exportCsv} variant="outline">Export .CSV</Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Past entries */}
+      {/* Past entries (kept as simple list beneath Journal) */}
       {view === "journal" && entries.length > 0 && (
         <div className="mt-6 space-y-3">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold">🕊 Past Entries</h3>
-            <Button variant="outline" onClick={exportTxt}>
-              Export All
-            </Button>
+            <Button variant="outline" onClick={exportTxt}>Export All</Button>
           </div>
-          {entries
-            .slice()
-            .reverse()
-            .map((e) => (
-              <Card key={e.id}>
-                <CardContent>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-xs text-gray-400">
-                        {e.date} — {e.section}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => openEdit(e)}>
-                        Edit
-                      </Button>
-                      <Button variant="outline" onClick={() => handleDelete(e.id)}>
-                        Delete
-                      </Button>
-                    </div>
+          {entries.slice().reverse().map((e) => (
+            <Card key={e.id} className="card-hover">
+              <CardContent>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs text-gray-400">
+                      {e.date} — {e.section}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                    </p>
                   </div>
-                  <p className="mt-2 font-medium">{e.question}</p>
-                  <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
-                </CardContent>
-              </Card>
-            ))}
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                    <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                  </div>
+                </div>
+                <p className="mt-2 font-medium">{e.question}</p>
+                <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Edit Modal (kept) */}
       {editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[90%] max-w-md space-y-4">
             <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
             <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
             <div>
-              <p className="text-sm">
-                Mood: {editMood}/10 ({moodLabel(editMood)})
-              </p>
+              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
               <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
               <Button onClick={saveEdit}>Save</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Drive Sync + Install */}
+      {/* Drive Sync + Install (kept) */}
       <div className="flex justify-between items-center mt-8">
         <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
         <InstallPrompt />
       </div>
 
       <div className="text-center mt-3">
-        <GoogleSync
-          dataToSync={{ entries }}
-          onRestore={handleRestore}
-        />
+        <GoogleSync dataToSync={{ entries }} onRestore={handleRestore} />
       </div>
     </div>
   );

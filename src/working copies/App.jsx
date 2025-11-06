@@ -16,7 +16,7 @@ import {
 import GoogleSync from "./GoogleSync.jsx";
 import InstallPrompt from "./InstallPrompt.jsx";
 
-// 🌿 Quote pool for intro
+// 🌿 Intro quote pool
 const quotes = [
   "Gratitude turns ordinary days into blessings.",
   "Peace begins the moment you choose gratitude.",
@@ -119,7 +119,7 @@ function affirmationFor(sentiment) {
 export default function App() {
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
-  const [quote, setQuote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
+  const [quote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
 
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
@@ -132,7 +132,7 @@ export default function App() {
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  // Load
+  // Load local theme + entries
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
@@ -157,14 +157,14 @@ export default function App() {
       mood,
       sentiment,
     };
-    setEntries([...entries, e]);
+    setEntries((prev) => [...prev, e]);
     setEntry("");
     setQuestion("");
     setMood(5);
   };
 
   // Delete
-  const handleDelete = (id) => setEntries(entries.filter((e) => e.id !== id));
+  const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
 
   // Modal edit
   const openEdit = (item) => {
@@ -229,6 +229,14 @@ export default function App() {
     return { avgMood, trend, sentiment, tip };
   }, [entries]);
 
+  // Handle restore from GoogleSync: update React state immediately (cross-device)
+  const handleRestore = (restored) => {
+    if (restored?.entries) {
+      // clone so React sees a new reference
+      setEntries([...restored.entries]);
+    }
+  };
+
   return (
     <div
       className={`min-h-screen p-6 max-w-3xl mx-auto ${
@@ -247,12 +255,24 @@ export default function App() {
       </p>
       <p className="italic text-center text-green-600 mb-4">“{quote}”</p>
 
+      {/* Suggested sections (tiny nudge) */}
+      <p className="text-center text-sm text-gray-500 mb-2">
+        Try rotating topics: <em>People & Relationships</em>, <em>Self & Growth</em>,
+        <em> Nature & Calm</em>, <em>Work & Purpose</em>, <em>Health</em>, <em>Hope</em>.
+      </p>
+
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
-        <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>
+        <Button
+          variant={view === "journal" ? "default" : "outline"}
+          onClick={() => setView("journal")}
+        >
           ✍️ Journal
         </Button>
-        <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>
+        <Button
+          variant={view === "summary" ? "default" : "outline"}
+          onClick={() => setView("summary")}
+        >
           📊 Summary
         </Button>
       </div>
@@ -403,9 +423,7 @@ export default function App() {
       <div className="text-center mt-3">
         <GoogleSync
           dataToSync={{ entries }}
-          onRestore={(restored) => {
-            if (restored?.entries) setEntries(restored.entries);
-          }}
+          onRestore={handleRestore}
         />
       </div>
     </div>

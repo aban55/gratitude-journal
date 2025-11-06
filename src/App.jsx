@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -253,14 +253,87 @@ export default function App() {
   };
 
   // -------- Past Entries: horizontal pages --------
-  const pages = useMemo(() => {
-    const grouped = groupByDate(entries);
-    // newest date first
-    const ordered = Object.keys(grouped)
-      .sort((a, b) => new Date(b) - new Date(a))
-      .map((d) => ({ dateKey: d, items: grouped[d] }));
-    return ordered;
-  }, [entries]);
+const pages = useMemo(() => {
+  const grouped = groupByDate(entries);
+  // newest date first (already sorted)
+  const ordered = Object.keys(grouped)
+    .sort((a, b) => new Date(b) - new Date(a))
+    .map((d) => ({ dateKey: d, items: grouped[d] }));
+  return ordered;
+}, [entries]);
+
+// -------- Render the past entries --------
+{view === "past" && (
+  <div className="space-y-3">
+    {pages.length === 0 ? (
+      <Card>
+        <CardContent>No entries yet.</CardContent>
+      </Card>
+    ) : (
+      <>
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-500">
+            Page {pageIndex + 1} / {pages.length}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => gotoPage(pageIndex - 1)}>
+              ⬅️ Prev
+            </Button>
+            <Button variant="outline" onClick={() => gotoPage(pageIndex + 1)}>
+              Next ➡️
+            </Button>
+            <Button onClick={exportJournalPDF}>📘 Export PDF</Button>
+            <Button variant="outline" onClick={exportTxt}>
+              Export TXT
+            </Button>
+            <Button variant="outline" onClick={exportCsv}>
+              Export CSV
+            </Button>
+          </div>
+        </div>
+
+        <div ref={scrollerRef} className={`journal-swiper ${dark ? "" : "parchment-bg"}`}>
+          {pages.map(({ dateKey, items }) => (
+            <section key={dateKey} ref={(el) => (pageRefs.current[dateKey] = el)} className="journal-page">
+              <div className="journal-page-inner">
+                <h3 className="journal-date">{dateKey}</h3>
+                <div className="space-y-4">
+                  {items.map((e) => (
+                    <div key={e.id} className="journal-entry">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-xs text-gray-500">
+                            {new Date(e.iso || e.date).toLocaleTimeString()} — {e.section}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={() => openEdit(e)}>
+                            Edit
+                          </Button>
+                          <Button variant="outline" onClick={() => handleDelete(e.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-2 font-medium">{e.question}</p>
+                      <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+        <div className="text-center text-xs text-gray-500">
+          Tip: swipe horizontally (trackpad / touch) to flip pages.
+        </div>
+      </>
+    )}
+  </div>
+)}
 
   const scrollerRef = useRef(null);
   const pageRefs = useRef({}); // key -> ref

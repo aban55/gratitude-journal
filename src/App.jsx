@@ -1,311 +1,341 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import SummaryPanel from "./components/SummaryPanel.jsx";
-import Inspiration from "./components/Inspiration.jsx";
-import GoogleSync from "./GoogleSync.jsx";
-import InstallPrompt from "./InstallPrompt.jsx";
-import { Button } from "./ui/Button.jsx";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
+import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
 import { Select } from "./ui/Select.jsx";
 import { Slider } from "./ui/Slider.jsx";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import GoogleSync from "./GoogleSync.jsx";
 
-// ✅ Define sections at top to prevent undefined error
+// 🌿 Quote pool for intro
+const quotes = [
+  "Gratitude turns ordinary days into blessings.",
+  "Peace begins the moment you choose gratitude.",
+  "Joy grows in the soil of appreciation.",
+  "The more grateful you are, the more beauty you see.",
+  "Each day is a new page to write your thanks."
+];
+
+// 🌻 Sections and prompts
 const sections = {
   "People & Relationships": [
-    "Who made my life easier today?",
-    "Which friend or family member am I grateful for — and why?",
-    "What act of kindness did I witness or receive?",
-    "Whose quality or habit do I admire most?",
-    "Who did I help today — and how did that feel?",
+    "Who brought a smile to my face today?",
+    "Which person showed me kindness or patience?",
+    "What’s a quality in someone close to me that I admire?",
+    "Who did I help today — and how did it make me feel?",
   ],
   "Self & Growth": [
-    "What ability or strength helped me today?",
-    "What challenge did I handle better than before?",
-    "What am I proud of learning or improving?",
-    "What moment made me feel resilient?",
-    "What recent mistake taught me something useful?",
+    "What ability or personal quality am I thankful for today?",
+    "What challenge have I handled better than before?",
+    "What is one thing about my body or health I appreciate?",
+    "What habit or discipline am I proud of keeping?",
+    "What lesson did a past mistake teach me that helps me now?",
+    "What challenge taught me something valuable?",
+    "What habit am I proud of maintaining?",
+    "How have I improved compared to last month?",
   ],
-  "Environment & Comfort": [
-    "What space or moment brought peace today?",
-    "What in nature caught my attention?",
-    "What simple comfort did I enjoy?",
-    "What modern convenience am I thankful for?",
-    "What made today feel safe or calm?",
+  "Nature & Calm": [
+    "What part of my home brings me peace or comfort?",
+    "What small thing in nature caught my attention today — light, wind, birds, sky, trees?",
+    "What simple pleasure did I enjoy — food, music, warmth, quiet?",
+    "What modern convenience or tool makes life smoother?",
+    "What moment today felt safe, calm, or peaceful?",
+    "What detail in nature stood out today?",
+    "What moment felt peaceful or quiet?",
+    "What simple pleasure grounded me today?",
   ],
-  "Hope & Perspective": [
-    "What opportunity am I lucky to have?",
-    "What am I looking forward to?",
-    "Who reminds me that life is bigger than my worries?",
-    "How has a tough time shaped who I am?",
-    "What do I often take for granted but value deeply?",
+  "Work & Purpose": [
+    "What part of my work felt meaningful?",
+    "Who supported my goals today?",
+    "What task made me feel capable or proud?",
+  ],
+  "Learning & Inspiration": [
+    "What idea or lesson inspired me recently?",
+    "What am I curious to learn next?",
+    "Who or what sparked my creativity today?",
+  ],
+  "Health & Wellbeing": [
+    "What part of my body served me well today?",
+    "What healthy choice did I make today?",
+    "How does my body show gratitude when I care for it?",
+    "What signs of recovery or strength am I noticing lately?",
+    "Who supports my physical or emotional health — and how can I appreciate them?",
+  ],
+  "Perspective & Hope": [
+    "What opportunity am I grateful to have that others may not?",
+    "What am I looking forward to in the coming week?",
+    "Who or what reminds me that life is bigger than my worries?",
+    "How has a tough time in my life shaped who I am today?",
+    "What am I thankful for that I usually take for granted?",
   ],
 };
 
-// ✅ Sentiment analyzer (used for graphs & affirmations)
-function analyzeSentiment(text) {
-  const pos = ["grateful", "happy", "joy", "peace", "love", "hopeful", "proud"];
-  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
+// 🌈 Sentiment analysis
+function analyzeSentiment(text, mood) {
+  const pos = ["grateful", "happy", "joy", "peace", "love", "thankful", "hopeful", "calm"];
+  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset", "lonely"];
   let score = 0;
-  pos.forEach((w) => text.toLowerCase().includes(w) && (score += 1));
-  neg.forEach((w) => text.toLowerCase().includes(w) && (score -= 1));
-  if (score > 1) return "🙂 Positive";
+  const t = text.toLowerCase();
+  pos.forEach(w => t.includes(w) && (score += 1));
+  neg.forEach(w => t.includes(w) && (score -= 1));
+  if (mood >= 7) score += 1;
+  if (mood <= 3) score -= 1;
+  if (score > 1) return "😊 Positive";
+  if (score === 1) return "🙂 Calm/Content";
   if (score === 0) return "😐 Neutral";
-  return "😟 Low";
+  return "😟 Stressed/Low";
+}
+
+// 💬 Mood label
+function moodLabel(mood) {
+  if (mood <= 3) return "😞 Low";
+  if (mood <= 6) return "😐 Neutral";
+  if (mood <= 8) return "🙂 Happy";
+  return "😄 Uplifted";
+}
+
+// 🌤 Affirmations
+function getAffirmation(sentiment) {
+  const affirm = {
+    "😊 Positive": [
+      "Keep radiating gratitude — it shapes your world.",
+      "Your light today makes someone else's day brighter.",
+    ],
+    "🙂 Calm/Content": [
+      "Tranquility is strength in motion.",
+      "Your centeredness is a quiet superpower.",
+    ],
+    "😐 Neutral": [
+      "Even stillness is progress — awareness counts.",
+      "Neutral moments prepare you for joy ahead.",
+    ],
+    "😟 Stressed/Low": [
+      "This moment will pass — breathe and release.",
+      "You’ve overcome before; you’ll rise again soon.",
+    ],
+  };
+  const list = affirm[sentiment] || ["Keep noticing small blessings — they multiply."];
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 export default function App() {
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
-  const [mood, setMood] = useState(5);
   const [entries, setEntries] = useState([]);
+  const [mood, setMood] = useState(5);
   const [view, setView] = useState("journal");
-  const [darkMode, setDarkMode] = useState(
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-  );
+  const [darkMode, setDarkMode] = useState(false);
+  const [quote, setQuote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
 
-  // ✅ Load local data
+  // Load data
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
+    const theme = localStorage.getItem("gj_theme");
+    if (theme) setDarkMode(theme === "dark");
+    else {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setDarkMode(prefersDark);
+      localStorage.setItem("gj_theme", prefersDark ? "dark" : "light");
+    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
-  }, [entries]);
+    localStorage.setItem("gj_theme", darkMode ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", darkMode);
+  }, [entries, darkMode]);
 
-  // ✅ System theme listener
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handle = (e) => setDarkMode(e.matches);
-    mq.addEventListener("change", handle);
-    return () => mq.removeEventListener("change", handle);
-  }, []);
-
-  // ✅ Save entry (also triggers Drive auto-sync)
+  // Save entry
   const handleSave = () => {
     if (!entry.trim() || !question) return;
+    const sentiment = analyzeSentiment(entry, mood);
     const newE = {
       id: Date.now(),
-      iso: new Date().toISOString(),
+      date: new Date().toLocaleDateString(),
       section,
       question,
       entry,
       mood,
-      sentiment: analyzeSentiment(entry),
+      sentiment,
     };
-    const updated = [...entries, newE];
-    setEntries(updated);
+    setEntries([...entries, newE]);
     setEntry("");
     setQuestion("");
     setMood(5);
-    localStorage.setItem("gratitudeEntries", JSON.stringify(updated));
   };
 
-  // ✅ Edit / Delete
   const handleDelete = (id) => setEntries(entries.filter((e) => e.id !== id));
-  const handleEdit = (id, newText) =>
-    setEntries(entries.map((e) => (e.id === id ? { ...e, entry: newText } : e)));
 
-  // ✅ Local export/import
-  const handleExport = () => {
-    const blob = new Blob([JSON.stringify(entries, null, 2)], {
-      type: "application/json",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "gratitude_journal_backup.json";
-    link.click();
-  };
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (Array.isArray(data)) setEntries(data);
-      } catch {
-        alert("Invalid file");
-      }
-    };
-    reader.readAsText(file);
-  };
+  const summary = useMemo(() => {
+    if (!entries.length) return null;
+    const last7 = entries.slice(-7);
+    const avgMood = (last7.reduce((a, e) => a + e.mood, 0) / last7.length).toFixed(1);
+    const moodTrend = entries.map((e) => ({ date: e.date, mood: e.mood }));
+    const sectionCounts = last7.reduce((a, e) => ((a[e.section] = (a[e.section] || 0) + 1), a), {});
+    const leastFocused = Object.entries(sectionCounts)
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, 2)
+      .map(([s]) => s);
+    const topSent = entries[entries.length - 1].sentiment;
+    return { avgMood, moodTrend, leastFocused, topSent, affirmation: getAffirmation(topSent) };
+  }, [entries]);
 
-  // ✅ Styling helpers
-  const darkBox = darkMode ? "bg-gray-800 text-gray-100" : "bg-white text-gray-900";
-
-  // ✅ Render
+  // --- UI ---
   return (
     <div
-      className={`min-h-screen ${
-        darkMode ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"
+      className={`p-6 space-y-4 max-w-3xl mx-auto transition-colors duration-300 ${
+        darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
       }`}
     >
-      <div className="max-w-3xl mx-auto p-6 space-y-4">
-        <h1 className="text-3xl font-bold text-center">🌿 Daily Gratitude Journal</h1>
-
-        {/* Tabs */}
-        <div className="flex justify-center gap-2 mb-3">
-          {["journal", "summary", "settings"].map((tab) => (
-            <Button
-              key={tab}
-              variant={view === tab ? "default" : "outline"}
-              onClick={() => setView(tab)}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Button>
-          ))}
-        </div>
-
-        {/* JOURNAL VIEW */}
-        {view === "journal" && (
-          <Card className={darkBox}>
-            <CardContent className="space-y-4">
-              <Inspiration darkMode={darkMode} />
-              <Select
-                value={section}
-                onChange={(v) => {
-                  setSection(v);
-                  setQuestion("");
-                }}
-                options={Object.keys(sections)}
-              />
-              <Select
-                value={question}
-                onChange={setQuestion}
-                options={["", ...sections[section]]}
-                placeholder="Pick a question"
-              />
-              {question && (
-                <>
-                  <p className="text-sm text-gray-500">{question}</p>
-                  <Textarea
-                    value={entry}
-                    onChange={(e) => setEntry(e.target.value)}
-                    placeholder="Write your reflection..."
-                  />
-                  <div className="space-y-1">
-                    <p className="text-sm">Mood: <strong>{mood}/10</strong></p>
-                    <Slider
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={[mood]}
-                      onChange={(v) => setMood(v[0])}
-                    />
-                  </div>
-                  <Button onClick={handleSave}>Save Entry</Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* SUMMARY VIEW */}
-        {view === "summary" && (
-          <Card className={darkBox}>
-            <CardContent>
-              <SummaryPanel entries={entries} darkMode={darkMode} />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* SETTINGS VIEW */}
-        {view === "settings" && (
-          <Card className={darkBox}>
-            <CardContent className="space-y-4">
-              <GoogleSync
-                dataToSync={{ entries }}
-                onRestore={(restored) =>
-                  restored.entries && setEntries(restored.entries)
-                }
-              />
-              <div>
-                <h3 className="font-semibold mb-1">Local Backup</h3>
-                <div className="flex gap-2">
-                  <Button onClick={handleExport}>Export JSON</Button>
-                  <label className="bg-gray-200 text-gray-800 px-3 py-2 rounded cursor-pointer hover:bg-gray-300">
-                    Import
-                    <input type="file" className="hidden" onChange={handleImport} />
-                  </label>
-                </div>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-1">Theme</h3>
-                <Button
-                  variant="outline"
-                  onClick={() => setDarkMode((d) => !d)}
-                >
-                  {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Past Entries */}
-        {view === "journal" && entries.length > 0 && (
-          <div className="space-y-3 mt-6">
-            <h2 className="text-xl font-semibold">🕊 Past Entries</h2>
-            {entries
-              .slice()
-              .reverse()
-              .map((e) => (
-                <Card key={e.id} className={darkBox}>
-                  <CardContent>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-400">
-                          {new Date(e.iso).toLocaleString()} — {e.section}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Mood {e.mood}/10 | {e.sentiment}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const newText = prompt("Edit entry:", e.entry);
-                            if (newText !== null) handleEdit(e.id, newText);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() =>
-                            window.confirm("Delete entry?") && handleDelete(e.id)
-                          }
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap">{e.entry}</p>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        )}
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
+        <Button onClick={() => setDarkMode(!darkMode)} variant="outline">
+          {darkMode ? "☀️ Light" : "🌙 Dark"}
+        </Button>
       </div>
 
-      {/* Floating Install button */}
-      <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          transition={{ duration: 0.3 }}
-          className="fixed bottom-5 right-5"
-        >
-          <InstallPrompt />
-        </motion.div>
-      </AnimatePresence>
+      {/* Intro */}
+      <div className="text-center">
+        <p className="text-gray-500 mb-2">
+          Save short reflections daily. Track mood & insights weekly.
+        </p>
+        <p className="italic text-green-600 text-sm mb-4">“{quote}”</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex justify-center gap-2 mb-4">
+        {["journal", "summary"].map((tab) => (
+          <Button
+            key={tab}
+            variant={view === tab ? "default" : "outline"}
+            onClick={() => setView(tab)}
+          >
+            {tab === "journal" ? "✍️ Journal" : "📊 Summary"}
+          </Button>
+        ))}
+      </div>
+
+      {/* JOURNAL */}
+      {view === "journal" && (
+        <Card>
+          <CardContent className="space-y-4">
+            <Select
+              value={section}
+              onChange={(v) => {
+                setSection(v);
+                setQuestion("");
+              }}
+              options={Object.keys(sections)}
+            />
+            <Select
+              value={question}
+              onChange={setQuestion}
+              options={["", ...sections[section]]}
+              placeholder="Pick a gratitude question"
+            />
+            {question && (
+              <>
+                <p className="text-sm text-gray-500">{question}</p>
+                <Textarea
+                  value={entry}
+                  onChange={(e) => setEntry(e.target.value)}
+                  placeholder="Write your reflection here..."
+                />
+                <div>
+                  <p className="text-sm">Mood: {mood}/10 ({moodLabel(mood)})</p>
+                  <Slider min={1} max={10} value={[mood]} onChange={(v) => setMood(v[0])} />
+                </div>
+                <Button onClick={handleSave}>Save Entry</Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SUMMARY */}
+      {view === "summary" && summary && (
+        <Card>
+          <CardContent className="space-y-4">
+            <h2 className="text-2xl font-semibold">📈 Weekly Mood Summary</h2>
+            <p>Average Mood (last 7 entries): <strong>{summary.avgMood}/10</strong></p>
+
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={summary.moodTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis domain={[0, 10]} />
+                <Tooltip />
+                <Line type="monotone" dataKey="mood" stroke="#16a34a" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+
+            <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded">
+              <p className="font-semibold text-green-800">🌞 Reflection Tip:</p>
+              <p className="text-green-700 italic">“{summary.affirmation}”</p>
+            </div>
+
+            {summary.leastFocused.length > 0 && (
+              <div className="mt-3">
+                <p className="font-medium">💡 Try exploring next:</p>
+                <ul className="list-disc list-inside text-sm text-gray-600">
+                  {summary.leastFocused.map((sec) => (
+                    <li key={sec}>{sec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Past Entries */}
+      {view === "journal" && entries.length > 0 && (
+        <div className="space-y-3 mt-6">
+          <h2 className="text-xl font-semibold">🕊 Recent Entries</h2>
+          {entries
+            .slice()
+            .reverse()
+            .map((e) => (
+              <Card key={e.id}>
+                <CardContent>
+                  <div className="flex justify-between">
+                    <div>
+                      <p className="text-xs text-gray-400">
+                        {e.date} — {e.section}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        window.confirm("Delete this entry?") && handleDelete(e.id)
+                      }
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                  <p className="mt-2 font-medium">{e.question}</p>
+                  <p className="mt-2 whitespace-pre-wrap">{e.entry}</p>
+                </CardContent>
+              </Card>
+            ))}
+        </div>
+      )}
+
+      {/* Google Drive Sync */}
+      <div className="text-center mt-6">
+        <GoogleSync
+          dataToSync={{ entries }}
+          onRestore={(restored) => {
+            if (restored.entries) setEntries(restored.entries);
+          }}
+        />
+      </div>
     </div>
   );
 }

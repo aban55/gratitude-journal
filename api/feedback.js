@@ -2,8 +2,11 @@
 // Purpose: Relays lightweight feedback to your Google Apps Script webhook
 // Deploy target: Vercel Serverless Function (Node >=18; native fetch available)
 
-const GAS_WEBHOOK =
-  "https://script.google.com/macros/s/AKfycbwzqAJ13NLdpAxDtb5UYeenSRM8QO0_yrFGOP2gM_TvwE1woAaqgW-WyhxdNX64wMTC/exec";
+const resp = await fetch("https://script.google.com/macros/s/AKfycbwzqAJ13NLdpAxDtb5UYeenSRM8QO0_yrFGOP2gM_TvwE1woAaqgW-WyhxdNX64wMTC/exec", {
+  method: "POST",
+  body: JSON.stringify(payload),
+});
+
 
 /**
  * Minimal schema guard

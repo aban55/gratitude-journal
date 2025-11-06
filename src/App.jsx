@@ -65,7 +65,6 @@ function moodLabel(mood) {
   if (mood <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
-
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
@@ -80,7 +79,6 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
-
 const toDateKey = (isoOrDate) => {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
@@ -113,7 +111,6 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
-
   // Persist local
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
@@ -163,6 +160,98 @@ export default function App() {
     setEditing(null);
   };
 
+  // Export: TXT, CSV, PDF
+  const exportTxt = () => {
+    const content = entries
+      .map(
+        (e) =>
+          `${e.date}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
+      )
+      .join("\n----------------\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Gratitude_Journal.txt";
+    link.click();
+  };
+  const exportCsv = () => {
+    const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
+    const rows = entries.map((e) => [
+      `"${e.date}"`,
+      `"${e.section}"`,
+      e.mood,
+      `"${e.sentiment}"`,
+      `"${e.question}"`,
+      `"${e.entry.replace(/"/g, '""')}"`,
+    ]);
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Gratitude_Journal.csv";
+    link.click();
+  };
+  const exportJournalPDF = async () => {
+    const pdf = new jsPDF("p", "pt", "a4");
+    const marginX = 40,
+      marginY = 60,
+      lineH = 20;
+    let y = marginY;
+
+    pdf.setFont("Times", "normal");
+    pdf.setFontSize(16);
+    pdf.text("🌿 My Gratitude Journal", marginX, y);
+    y += 26;
+
+    // group by date asc
+    const byDate = groupByDate(entries);
+    const sortedDates = Object.keys(byDate).sort(
+      (a, b) => new Date(a) - new Date(b)
+    );
+
+    for (const d of sortedDates) {
+      if (y + 60 > pdf.internal.pageSize.height) {
+        pdf.addPage();
+        y = marginY;
+      }
+      pdf.setFontSize(12);
+      pdf.setTextColor(34, 139, 34);
+      pdf.text(d, marginX, y);
+      y += 18;
+
+      for (const e of byDate[d]) {
+        if (y + 90 > pdf.internal.pageSize.height) {
+          pdf.addPage();
+          y = marginY;
+        }
+        pdf.setTextColor(0, 0, 0);
+        pdf.setFontSize(11);
+        pdf.text(`Section: ${e.section}`, marginX, y);
+        y += lineH;
+        pdf.text(`Mood: ${e.mood}/10 | ${e.sentiment}`, marginX, y);
+        y += lineH;
+        pdf.setFont("Times", "bold");
+        pdf.text(`Q: ${e.question}`, marginX, y);
+        y += lineH;
+        pdf.setFont("Times", "normal");
+        const lines = pdf.splitTextToSize(e.entry, 520);
+        pdf.text(lines, marginX, y);
+        y += lines.length * lineH + 14;
+      }
+    }
+    pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+  // Drive -> local merge (kept)
+  const handleRestore = (restored) => {
+    if (!restored?.entries) return;
+    const incoming = restored.entries;
+    const map = new Map(entries.map((e) => [e.id, e]));
+    for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
+    const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+    setEntries(merged);
+  };
+
   // -------- Past Entries: horizontal pages --------
   const pages = useMemo(() => {
     const grouped = groupByDate(entries);
@@ -192,13 +281,6 @@ export default function App() {
     setPageIndex(clamped);
     const k = pages[clamped].dateKey;
     pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
-  };
-
-  // Handle restore from external sources (e.g., Google Drive)
-  const handleRestore = (restoredEntries) => {
-    if (restoredEntries) {
-      setEntries((prevEntries) => [...prevEntries, ...restoredEntries]);
-    }
   };
 
   return (
@@ -277,9 +359,9 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST */}
+      {/* PAST — horizontal pages with parchment */}
       {view === "past" && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {pages.length === 0 ? (
             <Card><CardContent>No entries yet.</CardContent></Card>
           ) : (
@@ -340,6 +422,39 @@ export default function App() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* SUMMARY */}
+      {view === "summary" && (
+        <Card>
+          <CardContent className="space-y-4">
+            <h2 className="text-2xl font-semibold">Weekly Summary</h2>
+            <SummaryPanel entries={entries} darkMode={dark} onExportPDF={exportJournalPDF} />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+              <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+              <Button onClick={exportJournalPDF}>Export .PDF</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Edit Modal */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[90%] max-w-md space-y-4">
+            <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
+            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
+            <div>
+              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
+              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button onClick={saveEdit}>Save</Button>
+            </div>
+          </div>
         </div>
       )}
 

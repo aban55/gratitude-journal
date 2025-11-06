@@ -3,18 +3,17 @@ import React, { useEffect, useRef, useState } from "react";
 /**
  * GoogleSync.jsx
  * -------------------------------------
- * Bidirectional sync (local ↔ Drive)
- * - Auto-restore: local first, then Drive
- * - Merge entries/affirmations instead of overwrite
- * - Auto token refresh (silent re-auth)
- * - Background debounce upload every few mins
- * - Compatible with all devices & browsers
+ * Auto-syncs gratitude entries & affirmations between LocalStorage and Google Drive.
+ * - Restores from local immediately
+ * - Merges with Drive data (no overwrite)
+ * - Auto silent sign-in with token refresh
+ * - Local JSON Export / Import included
  */
 
 const CLIENT_ID =
   "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
 const API_KEY = "AIzaSyDJRs5xgDpvBe1QJk9RS_rZB1_igSzMRGc";
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = "https://www.googleapis.com/auth/drive"; // ✅ Full drive access for listing & reading created files
 const BACKUP_NAME = "gratitude_journal_backup.json";
 
 export default function GoogleSync({ dataToSync, onRestore }) {
@@ -70,7 +69,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
 
         if (cancelled) return;
 
-        // Init OAuth client
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
           scope: SCOPES,
@@ -84,10 +82,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           },
         });
 
-        // 1️⃣ Always restore local first
+        // Always restore local first
         tryLocalRestore();
 
-        // 2️⃣ Then silent sign-in or reuse token
+        // Silent sign-in
         if (accessToken) fetchUserProfile(accessToken);
         else tokenClientRef.current.requestAccessToken({ prompt: "" });
       } catch (e) {
@@ -117,9 +115,8 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     try {
       const entries = JSON.parse(localStorage.getItem("gratitudeEntries") || "[]");
       const affirmations = JSON.parse(localStorage.getItem("savedAffirmations") || "[]");
-      const payload = { entries, affirmations };
       if ((entries.length || affirmations.length) && onRestore) {
-        onRestore(payload);
+        onRestore({ entries, affirmations });
         console.log("📁 [GoogleSync] Restored local data.");
       }
     } catch {
@@ -170,29 +167,25 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     const merged = { entries: [], affirmations: [] };
 
     const allEntries = [...(localData.entries || []), ...(driveData.entries || [])];
-    const uniqueEntries = [];
     const seen = new Set();
     for (const e of allEntries) {
       const key = `${e.date}-${e.section}-${e.question}-${e.entry}`;
       if (!seen.has(key)) {
         seen.add(key);
-        uniqueEntries.push(e);
+        merged.entries.push(e);
       }
     }
 
     const allAffirmations = [...(localData.affirmations || []), ...(driveData.affirmations || [])];
     const seenAff = new Set();
-    const uniqueAff = [];
     for (const a of allAffirmations) {
       const key = a.quote || a.text;
       if (!seenAff.has(key)) {
         seenAff.add(key);
-        uniqueAff.push(a);
+        merged.affirmations.push(a);
       }
     }
 
-    merged.entries = uniqueEntries;
-    merged.affirmations = uniqueAff;
     merged.lastModified = new Date().toISOString();
     return merged;
   };
@@ -218,7 +211,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       const driveData = await res.json();
       const merged = mergeData(localData, driveData);
 
-      // Save merged to local
       localStorage.setItem("gratitudeEntries", JSON.stringify(merged.entries));
       localStorage.setItem("savedAffirmations", JSON.stringify(merged.affirmations));
       localStorage.setItem("gratitude_local_backup", JSON.stringify(merged));
@@ -228,8 +220,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       localStorage.setItem("gj_last_restored", new Date().toISOString());
 
       console.log("☁️ [GoogleSync] Merged and restored from Drive.");
-
-      // Upload back the merged file (so all devices stay in sync)
       await uploadToDrive(merged);
     } catch (e) {
       console.warn("[GoogleSync] restoreAndMerge failed:", e);
@@ -266,7 +256,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         if (created?.id) backupFileIdRef.current = created.id;
       }
 
-      // Local safety copy
       localStorage.setItem("gratitude_local_backup", payload);
       localStorage.setItem("gj_last_synced", new Date().toISOString());
       setLastSynced(new Date().toLocaleString());
@@ -280,7 +269,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
 
   const restoreFromDrive = () => accessToken && restoreAndMerge(accessToken);
 
-  // ---------------- Sign In / Out ----------------
   const signIn = () =>
     tokenClientRef.current?.requestAccessToken({ prompt: "consent" });
 
@@ -291,7 +279,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     setStatus("offline");
   };
 
-  // ---------------- Auto Upload Debounce ----------------
   useEffect(() => {
     if (!accessToken) return;
     const t = setTimeout(() => uploadToDrive(), 4000);
@@ -364,6 +351,77 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           </div>
         </div>
       )}
+
+      {/* ──────────────────────────────── */}
+      {/* Local Backup / Manual Export */}
+      <div className="mt-4 border-t pt-3 text-sm">
+        <h4 className="font-medium mb-1">💾 Local Backup</h4>
+        <p className="text-xs text-gray-500 mb-2">
+          Offline? Export or import manually anytime.
+        </p>
+        <div className="flex flex-wrap gap-2 justify-center">
+          <button
+            onClick={() => {
+              const data = JSON.stringify(
+                {
+                  entries: JSON.parse(localStorage.getItem("gratitudeEntries") || "[]"),
+                  affirmations: JSON.parse(
+                    localStorage.getItem("savedAffirmations") || "[]"
+                  ),
+                  lastModified: new Date().toISOString(),
+                },
+                null,
+                2
+              );
+              const blob = new Blob([data], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "gratitude_local_backup.json";
+              a.click();
+            }}
+            className="bg-gray-800 text-white px-3 py-2 rounded hover:bg-gray-900"
+          >
+            Export JSON
+          </button>
+
+          <label className="cursor-pointer bg-white border px-3 py-2 rounded hover:bg-gray-50">
+            Import JSON
+            <input
+              type="file"
+              accept="application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                  try {
+                    const imported = JSON.parse(evt.target.result);
+                    if (onRestore) onRestore(imported);
+                    localStorage.setItem(
+                      "gratitudeEntries",
+                      JSON.stringify(imported.entries || [])
+                    );
+                    localStorage.setItem(
+                      "savedAffirmations",
+                      JSON.stringify(imported.affirmations || [])
+                    );
+                    localStorage.setItem(
+                      "gratitude_local_backup",
+                      JSON.stringify(imported)
+                    );
+                    alert("✅ Local backup restored successfully!");
+                  } catch {
+                    alert("❌ Invalid JSON file");
+                  }
+                };
+                reader.readAsText(file);
+              }}
+            />
+          </label>
+        </div>
+      </div>
     </div>
   );
 }

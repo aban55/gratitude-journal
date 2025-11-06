@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -9,6 +9,7 @@ import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
 import jsPDF from "jspdf";
 
+// 🌿 Intro blurb + quote pool
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
   "Peace begins the moment you choose gratitude.",
@@ -18,6 +19,7 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
+// 🌻 Sections & prompts (kept + compact)
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -56,13 +58,35 @@ const sections = {
   ],
 };
 
-function toDateKey(isoOrDate) {
-  const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toLocaleDateString();
+// Helpers
+function moodLabel(mood) {
+  if (mood <= 3) return "😞 Sad / Low";
+  if (mood <= 6) return "😐 Neutral";
+  if (mood <= 8) return "🙂 Positive";
+  return "😄 Uplifted";
 }
+function analyzeSentiment(text, mood) {
+  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
+  const neg = ["tired", "sad", "angry", "stressed", "worried"];
+  let s = 0;
+  const t = text.toLowerCase();
+  pos.forEach((w) => t.includes(w) && (s += 1));
+  neg.forEach((w) => t.includes(w) && (s -= 1));
+  if (mood >= 7) s++;
+  if (mood <= 3) s--;
+  if (s > 1) return "😊 Positive";
+  if (s === 1) return "🙂 Content";
+  if (s === 0) return "😐 Neutral";
+  return "😟 Stressed";
+}
+const toDateKey = (isoOrDate) => {
+  const d = isoOrDate ? new Date(isoOrDate) : new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    .toLocaleDateString();
+};
 
 export default function App() {
-  const [view, setView] = useState("journal");
+  const [view, setView] = useState("journal"); // journal | past | summary
   const [dark, setDark] = useState(false);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
@@ -87,7 +111,6 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
-
   // Persist local
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
@@ -219,6 +242,47 @@ export default function App() {
     pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
+  // Drive -> local merge (kept)
+  const handleRestore = (restored) => {
+    if (!restored?.entries) return;
+    const incoming = restored.entries;
+    const map = new Map(entries.map((e) => [e.id, e]));
+    for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
+    const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+    setEntries(merged);
+  };
+
+  // -------- Past Entries: horizontal pages --------
+  const pages = useMemo(() => {
+    const grouped = groupByDate(entries);
+    // newest date first
+    const ordered = Object.keys(grouped)
+      .sort((a, b) => new Date(b) - new Date(a))
+      .map((d) => ({ dateKey: d, items: grouped[d] }));
+    return ordered;
+  }, [entries]);
+
+  const scrollerRef = useRef(null);
+  const pageRefs = useRef({}); // key -> ref
+  const [pageIndex, setPageIndex] = useState(0);
+  useEffect(() => {
+    // snap to first page on entering tab
+    if (view === "past" && pages.length && scrollerRef.current) {
+      const k = pages[pageIndex]?.dateKey;
+      if (k && pageRefs.current[k]) {
+        pageRefs.current[k].scrollIntoView({ behavior: "instant", inline: "start" });
+      }
+    }
+  }, [view]); // eslint-disable-line
+
+  const gotoPage = (i) => {
+    if (!pages.length) return;
+    const clamped = Math.max(0, Math.min(pages.length - 1, i));
+    setPageIndex(clamped);
+    const k = pages[clamped].dateKey;
+    pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
+  };
+
   return (
     <div
       className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${
@@ -295,62 +359,68 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST */}
+      {/* PAST — horizontal pages with parchment */}
       {view === "past" && (
-        <div className="space-y-4">
-          <Card>
-            <CardContent>
-              <h2 className="font-semibold mb-2">Rolling 12-Month Matrix</h2>
-              <div className="year-matrix">
-                {weeks.map((week, wi) => (
-                  <div key={wi} className="year-week">
-                    {week.map((cell) => {
-                      const stat = cell.stat;
-                      const bg = stat ? moodToColor(stat.avgMood) : "#f3f4f6";
-                      return (
-                        <button
-                          key={cell.key}
-                          title={`${cell.label}\n${stat ? `${stat.count} entries` : "No entry"}`}
-                          className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""}`}
-                          style={{ background: bg }}
-                          onClick={() => setSelectedDayKey(cell.key)}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
+        <div className="space-y-3">
+          {pages.length === 0 ? (
+            <Card><CardContent>No entries yet.</CardContent></Card>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-500">
+                  Page {pageIndex + 1} / {pages.length}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => gotoPage(pageIndex - 1)}>⬅️ Prev</Button>
+                  <Button variant="outline" onClick={() => gotoPage(pageIndex + 1)}>Next ➡️</Button>
+                  <Button onClick={exportJournalPDF}>📘 Export PDF</Button>
+                  <Button variant="outline" onClick={exportTxt}>Export TXT</Button>
+                  <Button variant="outline" onClick={exportCsv}>Export CSV</Button>
+                </div>
               </div>
-              <div className="year-month-labels">
-                {monthLabels.map((m) => (
-                  <span key={m.key} style={{ left: `${m.offsetPx}px` }}>
-                    {m.label}
-                  </span>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Selected Day Entries */}
-          {selectedDayKey && (
-            <Card>
-              <CardContent>
-                <h3 className="font-semibold mb-2">{fmtDate(selectedDayKey)}</h3>
-                {dayEntries.length === 0 ? (
-                  <p>No entries for this date.</p>
-                ) : (
-                  dayEntries.map((e) => (
-                    <div key={e.id} className="border-b pb-2 mb-2">
-                      <p className="text-xs text-gray-500">{e.section}</p>
-                      <p className="text-sm">
-                        Mood {e.mood}/10 ({moodLabel(e.mood)})
-                      </p>
-                      <p className="mt-2 font-medium">{e.question}</p>
-                      <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
+              <div
+                ref={scrollerRef}
+                className={`journal-swiper ${dark ? "" : "parchment-bg"}`}
+              >
+                {pages.map(({ dateKey, items }) => (
+                  <section
+                    key={dateKey}
+                    ref={(el) => (pageRefs.current[dateKey] = el)}
+                    className="journal-page"
+                  >
+                    <div className="journal-page-inner">
+                      <h3 className="journal-date">{dateKey}</h3>
+                      <div className="space-y-4">
+                        {items.map((e) => (
+                          <div key={e.id} className="journal-entry">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(e.iso || e.date).toLocaleTimeString()} — {e.section}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                                <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                              </div>
+                            </div>
+                            <p className="mt-2 font-medium">{e.question}</p>
+                            <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
+                  </section>
+                ))}
+              </div>
+              <div className="text-center text-xs text-gray-500">
+                Tip: swipe horizontally (trackpad / touch) to flip pages.
+              </div>
+            </>
           )}
         </div>
       )}
@@ -358,11 +428,54 @@ export default function App() {
       {/* SUMMARY */}
       {view === "summary" && (
         <Card>
-          <CardContent>
-            <SummaryPanel entries={entries} darkMode={dark} />
+          <CardContent className="space-y-4">
+            <h2 className="text-2xl font-semibold">Weekly Summary</h2>
+            <SummaryPanel entries={entries} darkMode={dark} onExportPDF={exportJournalPDF} />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+              <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+              <Button onClick={exportJournalPDF}>Export .PDF</Button>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Edit Modal */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[90%] max-w-md space-y-4">
+            <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
+            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
+            <div>
+              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
+              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button onClick={saveEdit}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drive Sync + Install */}
+      <div className="flex justify-between items-center mt-8">
+        <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
+        <InstallPrompt />
+      </div>
+      <div className="text-center mt-3">
+        <GoogleSync dataToSync={{ entries }} onRestore={handleRestore} />
+      </div>
     </div>
   );
+}
+
+// ------- helpers -------
+function groupByDate(list) {
+  const out = {};
+  for (const e of list) {
+    const key = toDateKey(e.iso || e.date);
+    (out[key] ||= []).push(e);
+  }
+  return out;
 }

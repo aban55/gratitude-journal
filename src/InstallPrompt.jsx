@@ -1,70 +1,57 @@
-// src/InstallPrompt.jsx
 import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+
+/**
+ * InstallPrompt.jsx
+ * Handles the PWA install flow cleanly:
+ * - Captures the beforeinstallprompt event
+ * - Shows a small “Install App” button when installable
+ * - Calls .prompt() properly to avoid console warnings
+ */
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [showHint, setShowHint] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [installed, setInstalled] = useState(false);
 
-  // Capture the install prompt event
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
+      // Stop default mini-info bar
       e.preventDefault();
       setDeferredPrompt(e);
+      setIsInstallable(true);
+      console.log("✅ PWA install prompt captured.");
     };
+
+    const handleAppInstalled = () => {
+      setInstalled(true);
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+      console.log("✅ App installed successfully.");
+    };
+
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-
-    // Detect already-installed state
-    window.addEventListener("appinstalled", () => setIsInstalled(true));
-
-    // iOS Safari hint
-    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
-    if (isIOS && !isStandalone) setShowHint(true);
-
+    window.addEventListener("appinstalled", handleAppInstalled);
     return () => {
-      window.removeEventListener(
-        "beforeinstallprompt",
-        handleBeforeInstallPrompt
-      );
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
-  const handleInstall = async () => {
-    if (!deferredPrompt) return;
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return alert("⚠️ Install prompt not available yet.");
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") setIsInstalled(true);
+    const result = await deferredPrompt.userChoice;
+    if (result.outcome === "accepted") console.log("✅ User accepted install.");
+    else console.log("❌ User dismissed install.");
     setDeferredPrompt(null);
+    setIsInstallable(false);
   };
 
-  if (isInstalled) return null;
+  if (installed || !isInstallable) return null;
 
   return (
-    <>
-      {deferredPrompt && (
-        <motion.button
-          onClick={handleInstall}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileHover={{ scale: 1.05 }}
-          transition={{ duration: 0.3 }}
-          className="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700"
-        >
-          📲 Install App
-        </motion.button>
-      )}
-
-      {showHint && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed bottom-5 left-5 right-5 text-center bg-yellow-100 text-yellow-800 p-3 rounded-lg shadow"
-        >
-          💡 Tap <strong>Share ▸ Add to Home Screen</strong> to install this app
-        </motion.div>
-      )}
-    </>
+    <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-green-700 transition-all">
+      <button onClick={handleInstallClick}>📱 Install Gratitude Journal</button>
+    </div>
   );
 }

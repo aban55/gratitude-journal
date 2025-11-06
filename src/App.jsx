@@ -30,41 +30,78 @@ const QUOTES = [
 
 const sections = {
   "People & Relationships": [
-    "Who brought a smile to my face today?",
-    "Which person showed me kindness or patience?",
-    "What’s a quality in someone close to me that I admire?",
-    "Who did I help today — and how did it make me feel?",
+    "Who made my day a little brighter today?",
+    "What kind word or gesture stayed with me?",
+    "Whose effort or patience am I grateful for right now?",
+    "In what small way did I show care for someone?",
+    "Who surprised me with kindness or humour?",
+    "Who do I want to thank (even silently) and why?"
   ],
+
   "Self & Growth": [
-    "What ability or personal quality am I thankful for today?",
-    "What challenge have I handled better than before?",
-    "What is one thing about my body or health I appreciate?",
-    "What habit or discipline am I proud of keeping?",
-    "What lesson did a past mistake teach me that helps me now?",
+    "What personal strength helped me today?",
+    "What habit or routine am I proud of keeping alive?",
+    "How did I bounce back from a challenge recently?",
+    "What have I learned about myself this week?",
+    "What small win shows I’m growing?",
+    "Where did I choose progress over perfection?"
   ],
+
+  "Blessings & Privileges": [
+    "What comfort or convenience quietly supported me today?",
+    "Which skill or tool saved me time or stress?",
+    "What freedom or choice do I often overlook?",
+    "Who or what is part of my safety net?",
+    "What knowledge or education helped me solve something today?",
+    "How can I use my good fortune to ease someone else’s path?"
+  ],
+
   "Nature & Calm": [
-    "What detail in nature stood out today?",
-    "What moment felt peaceful or quiet?",
+    "What sight, sound, or scent from nature soothed me today?",
+    "When did I feel most peaceful or present?",
+    "What tiny moment of beauty made me pause?",
+    "What space in my surroundings feels like a sanctuary?",
     "What simple pleasure grounded me today?",
-    "What modern convenience or tool makes life smoother?",
+    "Where did I notice light, wind, birds, sky, or trees?"
   ],
+
   "Work & Purpose": [
-    "What part of my work felt meaningful?",
-    "Who supported my goals today?",
-    "What task made me feel capable or proud?",
+    "What task gave me a sense of purpose or pride today?",
+    "Who supported or collaborated with me meaningfully?",
+    "What skill did I use well today?",
+    "What small step moved me forward?",
+    "Where did I create value for someone else?",
+    "What felt meaningful about my effort?"
   ],
+
   "Learning & Inspiration": [
-    "What idea or lesson inspired me recently?",
-    "What am I curious to learn next?",
-    "Who or what sparked my creativity today?",
+    "What idea recently opened my mind?",
+    "Who or what sparked my creativity or motivation today?",
+    "What new thing did I notice or understand better?",
+    "What did I read, hear, or watch that stayed with me?",
+    "How did curiosity improve my day?",
+    "What perspective shift am I thankful for?"
   ],
+
   "Health & Wellbeing": [
-    "What part of my body served me well today?",
-    "What healthy choice did I make today?",
-    "How does my body show gratitude when I care for it?",
-    "What signs of recovery or strength am I noticing lately?",
+    "What did my body let me do today that I’m thankful for?",
+    "What healthy decision did I stick with?",
+    "What rest or nourishment felt healing?",
+    "Where am I noticing strength or recovery lately?",
+    "How did I care for my mind today?",
+    "What small ritual helped me feel balanced?"
   ],
+
+  "Perspective & Hope": [
+    "What opportunity or freedom am I grateful to have?",
+    "What am I hopeful about in the near future?",
+    "How has a tough season shaped my empathy or courage?",
+    "What reminder helps me see life is unfolding in my favour?",
+    "What am I thankful for that I usually take for granted?",
+    "What would future-me thank present-me for today?"
+  ]
 };
+
 
 function parseDate(src) {
   if (!src) return null;

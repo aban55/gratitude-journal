@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -65,6 +65,7 @@ function moodLabel(mood) {
   if (mood <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
+
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
@@ -79,6 +80,7 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
+
 const toDateKey = (isoOrDate) => {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())

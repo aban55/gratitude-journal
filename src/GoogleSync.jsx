@@ -2,18 +2,17 @@ import React, { useEffect, useRef, useState } from "react";
 
 /**
  * GoogleSync.jsx
- * -------------------------------------
- * Auto-syncs gratitude entries & affirmations between LocalStorage and Google Drive.
- * - Restores from local immediately
- * - Merges with Drive data (no overwrite)
- * - Auto silent sign-in with token refresh
- * - Local JSON Export / Import included
+ * Full bidirectional sync between LocalStorage and Google Drive.
+ * - Restores immediately from local
+ * - Silently restores & merges from Drive
+ * - Merges entries + affirmations (no overwrite)
+ * - Automatically reauths every 55min
+ * - Includes manual export/import (offline safe)
  */
 
 const CLIENT_ID =
   "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
-const API_KEY = "AIzaSyDJRs5xgDpvBe1QJk9RS_rZB1_igSzMRGc";
-const SCOPES = "https://www.googleapis.com/auth/drive"; // ✅ Full drive access for listing & reading created files
+const SCOPES = "https://www.googleapis.com/auth/drive"; // ✅ Full Drive scope
 const BACKUP_NAME = "gratitude_journal_backup.json";
 
 export default function GoogleSync({ dataToSync, onRestore }) {
@@ -47,7 +46,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           });
         }
 
-        // Load GAPI
+        // Load GAPI client
         if (!window.gapi?.client) {
           await new Promise((res) => {
             const s = document.createElement("script");
@@ -55,7 +54,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
             s.onload = async () => {
               await window.gapi.load("client", async () => {
                 await window.gapi.client.init({
-                  apiKey: API_KEY,
                   discoveryDocs: [
                     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
                   ],
@@ -69,6 +67,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
 
         if (cancelled) return;
 
+        // Init OAuth2 client
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
           scope: SCOPES,
@@ -82,7 +81,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           },
         });
 
-        // Always restore local first
+        // Restore from local first
         tryLocalRestore();
 
         // Silent sign-in
@@ -117,14 +116,14 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       const affirmations = JSON.parse(localStorage.getItem("savedAffirmations") || "[]");
       if ((entries.length || affirmations.length) && onRestore) {
         onRestore({ entries, affirmations });
-        console.log("📁 [GoogleSync] Restored local data.");
+        console.log("📁 [GoogleSync] Restored from local backup.");
       }
     } catch {
-      console.warn("[GoogleSync] local restore error");
+      console.warn("[GoogleSync] Local restore failed.");
     }
   };
 
-  // ---------------- Fetch Profile & Auto Restore ----------------
+  // ---------------- Fetch Profile ----------------
   const fetchUserProfile = async (token) => {
     try {
       const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -141,27 +140,31 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
-  // ---------------- Locate / Upload / Restore Helpers ----------------
+  // ---------------- Locate Backup ----------------
   const locateBackup = async () => {
     if (backupFileIdRef.current) return backupFileIdRef.current;
     try {
-      const res = await window.gapi.client.drive.files.list({
-        q: `name='${BACKUP_NAME}' and trashed=false`,
-        spaces: "drive",
-        fields: "files(id,name,modifiedTime)",
-      });
-      const file = res.result?.files?.[0];
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_NAME}' and trashed=false&spaces=drive&fields=files(id,name,modifiedTime)`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (!res.ok) throw new Error(`Drive list failed: ${res.status}`);
+      const data = await res.json();
+      const file = data.files?.[0];
       if (file?.id) {
         backupFileIdRef.current = file.id;
         return file.id;
       }
       return null;
     } catch (e) {
-      console.warn("[GoogleSync] locateBackup error:", e);
+      if (e.message.includes("403"))
+        console.warn("[GoogleSync] locateBackup: insufficient permission (check OAuth scope).");
+      else console.warn("[GoogleSync] locateBackup error:", e);
       return null;
     }
   };
 
+  // ---------------- Merge Logic ----------------
   const mergeData = (localData, driveData) => {
     if (!driveData) return localData;
     const merged = { entries: [], affirmations: [] };
@@ -176,9 +179,9 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       }
     }
 
-    const allAffirmations = [...(localData.affirmations || []), ...(driveData.affirmations || [])];
+    const allAff = [...(localData.affirmations || []), ...(driveData.affirmations || [])];
     const seenAff = new Set();
-    for (const a of allAffirmations) {
+    for (const a of allAff) {
       const key = a.quote || a.text;
       if (!seenAff.has(key)) {
         seenAff.add(key);
@@ -190,6 +193,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     return merged;
   };
 
+  // ---------------- Restore + Merge ----------------
   const restoreAndMerge = async (token) => {
     try {
       const localData = {
@@ -208,6 +212,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (!res.ok) throw new Error(`Drive download failed: ${res.status}`);
       const driveData = await res.json();
       const merged = mergeData(localData, driveData);
 
@@ -226,19 +231,23 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
+  // ---------------- Upload Backup ----------------
   const uploadToDrive = async (payloadData) => {
     if (!accessToken) return;
     try {
       setStatus("syncing");
       const payload = JSON.stringify(payloadData || dataToSync || {}, null, 2);
       const blob = new Blob([payload], { type: "application/json" });
-      const headers = { Authorization: `Bearer ${accessToken}` };
       let fileId = await locateBackup();
 
       if (fileId) {
         await fetch(
           `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          { method: "PATCH", headers, body: blob }
+          {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: blob,
+          }
         );
       } else {
         const metadata = { name: BACKUP_NAME, mimeType: "application/json" };
@@ -248,9 +257,14 @@ export default function GoogleSync({ dataToSync, onRestore }) {
           new Blob([JSON.stringify(metadata)], { type: "application/json" })
         );
         form.append("file", blob);
+
         const res = await fetch(
           "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-          { method: "POST", headers, body: form }
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: form,
+          }
         );
         const created = await res.json();
         if (created?.id) backupFileIdRef.current = created.id;
@@ -267,11 +281,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     }
   };
 
+  // ---------------- Handlers ----------------
   const restoreFromDrive = () => accessToken && restoreAndMerge(accessToken);
-
   const signIn = () =>
     tokenClientRef.current?.requestAccessToken({ prompt: "consent" });
-
   const signOut = () => {
     localStorage.removeItem("gj_access_token");
     setAccessToken(null);
@@ -279,6 +292,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     setStatus("offline");
   };
 
+  // ---------------- Auto Sync ----------------
   useEffect(() => {
     if (!accessToken) return;
     const t = setTimeout(() => uploadToDrive(), 4000);
@@ -289,6 +303,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
   // ---------------- UI ----------------
   return (
     <div className="space-y-3">
+      {/* Sync Status Banner */}
       <div
         className={`p-3 rounded-lg border text-sm text-center ${
           status === "up_to_date"
@@ -302,14 +317,15 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       >
         {status === "idle" && "☁️ Drive sync ready"}
         {status === "syncing" && "🔄 Syncing with Drive…"}
-        {status === "up_to_date" && "✅ Synced"}
-        {status === "error" && "⚠️ Sync error — local only"}
+        {status === "up_to_date" && "✅ Synced with Drive"}
+        {status === "error" && "⚠️ Sync error — using local only"}
         <div className="text-xs text-gray-500 mt-1 space-y-0.5">
           {lastSynced && <div>Last synced: {lastSynced}</div>}
           {lastRestored && <div>Last restored: {lastRestored}</div>}
         </div>
       </div>
 
+      {/* Auth UI */}
       {!accessToken ? (
         <button
           onClick={signIn}
@@ -319,16 +335,17 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         </button>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center justify-center gap-3">
-            {user?.picture && (
-              <img src={user.picture} alt="pfp" className="w-8 h-8 rounded-full" />
-            )}
-            <div className="text-left text-sm">
-              <div className="font-medium">{user?.name}</div>
-              <div className="text-gray-500">{user?.email}</div>
+          {user && (
+            <div className="flex items-center justify-center gap-3">
+              {user.picture && (
+                <img src={user.picture} alt="pfp" className="w-8 h-8 rounded-full" />
+              )}
+              <div className="text-left text-sm">
+                <div className="font-medium">{user.name}</div>
+                <div className="text-gray-500">{user.email}</div>
+              </div>
             </div>
-          </div>
-
+          )}
           <div className="flex flex-wrap justify-center gap-2">
             <button
               onClick={() => uploadToDrive()}
@@ -352,8 +369,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         </div>
       )}
 
-      {/* ──────────────────────────────── */}
-      {/* Local Backup / Manual Export */}
+      {/* Local JSON Export / Import */}
       <div className="mt-4 border-t pt-3 text-sm">
         <h4 className="font-medium mb-1">💾 Local Backup</h4>
         <p className="text-xs text-gray-500 mb-2">

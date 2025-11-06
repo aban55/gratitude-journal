@@ -188,3 +188,39 @@
 .year-legend .high { background: #16a34a; }       /* high mood */
 .year-legend .freq1 { background: #bfdbfe; }      /* light blue */
 .year-legend .freq5 { background: #1e40af; }      /* dark blue */
+
+.year-matrix {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px 0;
+  height: fit-content;
+}
+.year-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.year-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.year-cell:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+.year-cell-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+.year-month-labels {
+  display: flex;
+  justify-content: flex-start;
+  gap: 24px;
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 4px;
+}

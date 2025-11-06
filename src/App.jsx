@@ -833,7 +833,10 @@ export default function App() {
           </Button>
         </div>
       </header>
-      <p className="text-center text-gray-500 mb-4 italic">“{quote}”</p>
+      <p className="text-center text-amber-800/90 italic text-[17px] sm:text-lg mt-1 mb-5 tracking-wide font-serif drop-shadow-sm">
+  “{quote}”
+</p>
+
 
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">

@@ -7,26 +7,26 @@ export default function InstallPrompt() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [autoPrompted, setAutoPrompted] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
-      // Prevent Chrome from auto-showing the prompt
       e.preventDefault();
       console.log("✅ PWA install prompt captured.");
       setDeferredPrompt(e);
     };
 
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-
-    // Detect successful installation
-    window.addEventListener("appinstalled", () => {
+    const handleAppInstalled = () => {
       console.log("✅ PWA installed successfully!");
       setIsInstalled(true);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 4000);
-    });
+    };
 
-    // iOS Safari install hint
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    // iOS Safari hint
     const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -38,20 +38,46 @@ export default function InstallPrompt() {
         "beforeinstallprompt",
         handleBeforeInstallPrompt
       );
+      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
+  // 🔄 Automatically show banner once per session
+  useEffect(() => {
+    if (deferredPrompt && !autoPrompted) {
+      setAutoPrompted(true);
+      const timer = setTimeout(async () => {
+        try {
+          deferredPrompt.prompt(); // ✅ Triggers native install banner
+          const choice = await deferredPrompt.userChoice;
+          if (choice.outcome === "accepted") {
+            console.log("📲 User accepted auto install prompt");
+            setIsInstalled(true);
+            setShowSuccess(true);
+            setTimeout(() => setShowSuccess(false), 4000);
+          } else {
+            console.log("❌ User dismissed auto install prompt");
+          }
+          setDeferredPrompt(null);
+        } catch (err) {
+          console.warn("Install prompt failed:", err);
+        }
+      }, 2500); // wait a couple seconds after load
+      return () => clearTimeout(timer);
+    }
+  }, [deferredPrompt, autoPrompted]);
+
   const handleInstall = async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt(); // ✅ This triggers the install banner
+    deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === "accepted") {
-      console.log("📲 User accepted install prompt");
+      console.log("📲 User accepted manual install prompt");
       setIsInstalled(true);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 4000);
     } else {
-      console.log("❌ User dismissed install prompt");
+      console.log("❌ User dismissed manual install prompt");
     }
     setDeferredPrompt(null);
   };
@@ -60,7 +86,7 @@ export default function InstallPrompt() {
 
   return (
     <>
-      {deferredPrompt && (
+      {deferredPrompt && !autoPrompted && (
         <motion.button
           onClick={handleInstall}
           initial={{ opacity: 0, y: 20 }}

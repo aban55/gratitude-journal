@@ -137,7 +137,7 @@ function WelcomeModal({ open, onClose, onStart }) {
       className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn"
       style={{ animationDuration: "0.4s" }}
     >
-      <div className="max-w-2xl w-[90%] sm:w-[600px] bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl border border-amber-300 p-8 relative parchment-bg">
+      <div className="max-w-2xl w-[90%] sm:w-[600px] bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl border border-amber-300 p-8 parchment-bg relative">
         <h2 className="text-3xl font-bold mb-3 flex items-center gap-2">
           🌿 Welcome to Your Gratitude Journal
         </h2>
@@ -147,16 +147,18 @@ function WelcomeModal({ open, onClose, onStart }) {
             <p className="leading-relaxed text-[15px]">
               Practising gratitude trains your mind to notice what’s going right.
               Even a few lines a day can improve mood, reduce stress, and build resilience.
-              This app keeps your reflections simple and meaningful — so it’s easy to stay consistent.
+              This app helps you build that habit—gently and consistently.
             </p>
 
             <div className="mt-6">
-              <h3 className="font-semibold text-lg mb-2 text-amber-900">✨ How it works</h3>
+              <h3 className="font-semibold text-lg mb-2 text-amber-900">
+                ✨ How it works
+              </h3>
               <ul className="list-disc pl-6 space-y-1 text-[15px]">
-                <li>Select a prompt that resonates with you.</li>
-                <li>Write a short reflection and set your mood (1–10).</li>
-                <li>Your entries save automatically — locally and to Drive if you’re signed in.</li>
-                <li>Review, edit, and export your reflections anytime from <i>Past Entries</i> or <i>Summary</i>.</li>
+                <li>Select a question or write freely about what you’re thankful for.</li>
+                <li>Record your reflection and set your mood (1–10).</li>
+                <li>Your entries save automatically — locally and to Google Drive (if signed in).</li>
+                <li>Review, edit, and export from the <i>Past Entries</i> or <i>Summary</i> tabs.</li>
               </ul>
             </div>
 
@@ -165,7 +167,7 @@ function WelcomeModal({ open, onClose, onStart }) {
                 onClick={() => setShowAbout(true)}
                 className="text-sm text-amber-700 underline hover:text-amber-900"
               >
-                🪷 About Gratitude
+                🪷 Why Gratitude Matters
               </button>
               <div className="flex gap-3">
                 <Button
@@ -186,21 +188,33 @@ function WelcomeModal({ open, onClose, onStart }) {
           </>
         ) : (
           <>
-            <h3 className="text-xl font-semibold mb-2 text-amber-900">🪷 The Power of Gratitude</h3>
+            <h3 className="text-xl font-semibold mb-2 text-amber-900">
+              🪷 The Power of Gratitude
+            </h3>
             <p className="leading-relaxed text-[15px] mb-4">
               Gratitude is more than a feeling — it’s a practice that reshapes how your mind
-              interprets the world. Studies show that keeping a daily gratitude journal:
+              interprets the world. Just a few minutes of journaling each day can:
             </p>
             <ul className="list-disc pl-6 space-y-1 text-[15px]">
-              <li>Boosts emotional resilience and reduces anxiety.</li>
-              <li>Improves sleep and focus by reducing negative rumination.</li>
-              <li>Strengthens relationships by increasing empathy and patience.</li>
-              <li>Helps train the brain to spot positive patterns instead of stress triggers.</li>
+              <li>Reduce stress, anxiety, and overthinking.</li>
+              <li>Improve sleep and emotional balance.</li>
+              <li>Strengthen relationships by increasing empathy.</li>
+              <li>Rewire your brain to spot positive patterns naturally.</li>
             </ul>
-            <p className="mt-4 text-[15px]">
-              Even a few lines a day act like small mental workouts — over time, they grow into a calm,
-              grounded, and grateful perspective.
-            </p>
+
+            {/* Habit Guide Section */}
+            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="font-semibold text-amber-800 mb-1">
+                🌞 Build Your Daily Habit
+              </h4>
+              <p className="text-[15px] text-amber-800/90 leading-relaxed">
+                Take just two quiet minutes each day to pause, reflect, and note one thing you’re grateful for.
+                You’ll start noticing calm, clarity, and more optimism — even on difficult days.
+              </p>
+              <p className="mt-2 text-[14px] italic text-amber-700">
+                “Consistency matters more than perfection — small reflections, every day.”
+              </p>
+            </div>
 
             <div className="mt-8 flex justify-end gap-3">
               <Button

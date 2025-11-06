@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * GoogleSync.jsx
- * - Stores backups in the user's My Drive (visible)
- * - Auto-restores sign-in silently (prompt:'')
- * - Refreshes token hourly
- * - Displays a live Sync Status Banner
- * - Works fully offline / without Drive login (local fallback)
+ * - Stores backups in user's My Drive (gratitude_journal_backup.json)
+ * - Auto restores sign-in silently (prompt:'')
+ * - Refreshes tokens every 55 minutes
+ * - Adds Sync Status Banner + "Last Restored" timestamp
+ * - Works fully offline via localStorage + JSON import/export
  */
 
 const CLIENT_ID = "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
@@ -19,17 +19,20 @@ export default function GoogleSync({ dataToSync, onRestore }) {
   const [user, setUser] = useState(null);
   const [backupFile, setBackupFile] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | syncing | up_to_date | error | offline
-  const [message, setMessage] = useState("");
   const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [lastRestoreTime, setLastRestoreTime] = useState(
+    localStorage.getItem("gj_last_restore") || null
+  );
 
   const [gapiReady, setGapiReady] = useState(false);
   const [driveReady, setDriveReady] = useState(false);
+  const [message, setMessage] = useState("");
   const tokenClientRef = useRef(null);
 
   const isSignedIn = useMemo(() => !!accessToken, [accessToken]);
-  const log = (...args) => console.log("[GoogleSync]", ...args);
+  const log = (...a) => console.log("[GoogleSync]", ...a);
 
-  // -------------------- Helpers --------------------
+  // -------------------- Scripts --------------------
   const ensureGoogleIdentityScript = () =>
     new Promise((resolve) => {
       if (window.google?.accounts) return resolve();
@@ -70,7 +73,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
-      prompt: "", // silent re-auth
+      prompt: "", // silent reauth
       callback: (resp) => {
         if (resp?.access_token) {
           setAccessToken(resp.access_token);
@@ -89,7 +92,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       if (res.status === 401) throw new Error("Token expired");
       const profile = await res.json();
       setUser(profile);
-      log("Signed in as:", profile);
+      log("Signed in:", profile);
       await locateBackup();
     } catch (e) {
       log("Profile fetch failed:", e);
@@ -110,7 +113,6 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       });
       const files = res.result?.files || [];
       setBackupFile(files[0] || null);
-      log("Located backup:", files);
       return files[0] || null;
     } catch (err) {
       log("locateBackup error:", err);
@@ -168,8 +170,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       );
       const json = await res.json();
       onRestore?.(json);
+      const now = Date.now();
+      setLastRestoreTime(now);
+      localStorage.setItem("gj_last_restore", now);
       setStatus("up_to_date");
-      setLastSyncTime(Date.now());
     } catch (e) {
       log("restore error:", e);
       setStatus("error");
@@ -201,8 +205,10 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       if (!file) return;
       const json = JSON.parse(await file.text());
       onRestore?.(json);
+      const now = Date.now();
+      setLastRestoreTime(now);
+      localStorage.setItem("gj_last_restore", now);
       setStatus("up_to_date");
-      setLastSyncTime(Date.now());
       alert("✅ Restored from local file");
     } catch (err) {
       setStatus("error");
@@ -245,16 +251,16 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     return () => clearTimeout(t);
   }, [JSON.stringify(dataToSync)]);
 
-  // -------------------- UI --------------------
-  const timeAgo = useMemo(() => {
-    if (!lastSyncTime) return "";
-    const diff = Math.floor((Date.now() - lastSyncTime) / 60000);
+  // -------------------- UI Logic --------------------
+  const timeAgo = (ts) => {
+    if (!ts) return "";
+    const diff = Math.floor((Date.now() - ts) / 60000);
     if (diff < 1) return "just now";
     if (diff === 1) return "1 min ago";
     if (diff < 60) return `${diff} mins ago`;
     const hrs = Math.floor(diff / 60);
     return `${hrs} hr${hrs > 1 ? "s" : ""} ago`;
-  }, [lastSyncTime]);
+  };
 
   const bannerColor =
     status === "up_to_date"
@@ -270,17 +276,18 @@ export default function GoogleSync({ dataToSync, onRestore }) {
       {/* ✅ Sync Status Banner */}
       <div className={`border rounded-md p-2 text-center text-sm font-medium ${bannerColor}`}>
         {status === "up_to_date" && (
-          <>☁️ Synced to Drive {timeAgo}</>
+          <>
+            ☁️ Synced to Drive {timeAgo(lastSyncTime) || "recently"}
+            {lastRestoreTime && (
+              <div className="text-xs text-gray-500">
+                Last restored {timeAgo(lastRestoreTime)}
+              </div>
+            )}
+          </>
         )}
-        {status === "syncing" && (
-          <>🔄 Syncing with Drive…</>
-        )}
-        {status === "error" && (
-          <>⚠️ Error syncing. Using local backup.</>
-        )}
-        {!isSignedIn && (
-          <>⚠️ Not signed in – local only</>
-        )}
+        {status === "syncing" && <>🔄 Syncing with Drive…</>}
+        {status === "error" && <>⚠️ Error syncing. Using local backup.</>}
+        {!isSignedIn && <>⚠️ Not signed in – local only</>}
       </div>
 
       {/* Account & Sync Controls */}
@@ -330,7 +337,7 @@ export default function GoogleSync({ dataToSync, onRestore }) {
         )}
       </div>
 
-      {/* Local Backup Section */}
+      {/* Local Backup */}
       <div className="rounded-xl border p-4">
         <h3 className="font-semibold text-gray-800 mb-2 dark:text-gray-100">💾 Local Backup</h3>
         <div className="flex flex-wrap items-center gap-3">

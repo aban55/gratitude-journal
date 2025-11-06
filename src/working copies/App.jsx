@@ -15,6 +15,9 @@ import jsPDF from "jspdf";
 const STORAGE_KEY = "gratitudeEntries";
 const THEME_KEY = "gj_theme";
 const WELCOME_KEY = "gj_seen_welcome";
+const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
+const REMINDER_TIME_KEY = "gj_reminder_time";
+const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
 
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
@@ -125,9 +128,30 @@ function triggerDownload(blob, name) {
 }
 
 /* =========================
+   Small Toast
+========================= */
+function Toast({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 bg-black/80 text-white rounded-full shadow-lg text-sm">
+      {message}
+      <button onClick={onClose} className="ml-3 text-white/80 hover:text-white">✕</button>
+    </div>
+  );
+}
+
+/* =========================
    Welcome Modal Component
 ========================= */
-function WelcomeModal({ open, onClose, onStart }) {
+function WelcomeModal({
+  open,
+  onClose,
+  onStart,
+  reminderEnabled,
+  reminderTime,
+  onReminderEnabled,
+  onReminderTime,
+}) {
   const [showAbout, setShowAbout] = useState(false);
 
   if (!open) return null;
@@ -160,6 +184,43 @@ function WelcomeModal({ open, onClose, onStart }) {
                 <li>Your entries save automatically — locally and to Google Drive (if signed in).</li>
                 <li>Review, edit, and export from the <i>Past Entries</i> or <i>Summary</i> tabs.</li>
               </ul>
+            </div>
+
+            {/* Habit & Reminder */}
+            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="font-semibold text-amber-800 mb-2">
+                🌞 Build Your Daily Habit
+              </h4>
+              <p className="text-[15px] text-amber-800/90 leading-relaxed mb-3">
+                Take two quiet minutes each day to pause and note one thing you’re grateful for.
+                Consistency > perfection — tiny steps, every day.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reminderEnabled}
+                    onChange={(e) => onReminderEnabled(e.target.checked)}
+                  />
+                  <span className="text-[15px]">Daily Reminder</span>
+                </label>
+
+                <select
+                  value={reminderTime}
+                  onChange={(e) => onReminderTime(e.target.value)}
+                  className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
+                  disabled={!reminderEnabled}
+                >
+                  <option value="07:00">7:00 AM</option>
+                  <option value="12:00">12:00 PM</option>
+                  <option value="20:00">8:00 PM</option>
+                </select>
+              </div>
+
+              <p className="mt-2 text-[13px] text-amber-700">
+                You’ll get a gentle nudge at your chosen time. If notifications are blocked, a small in-app alert appears instead.
+              </p>
             </div>
 
             <div className="mt-8 flex flex-wrap justify-between items-center gap-3">
@@ -201,20 +262,6 @@ function WelcomeModal({ open, onClose, onStart }) {
               <li>Strengthen relationships by increasing empathy.</li>
               <li>Rewire your brain to spot positive patterns naturally.</li>
             </ul>
-
-            {/* Habit Guide Section */}
-            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <h4 className="font-semibold text-amber-800 mb-1">
-                🌞 Build Your Daily Habit
-              </h4>
-              <p className="text-[15px] text-amber-800/90 leading-relaxed">
-                Take just two quiet minutes each day to pause, reflect, and note one thing you’re grateful for.
-                You’ll start noticing calm, clarity, and more optimism — even on difficult days.
-              </p>
-              <p className="mt-2 text-[14px] italic text-amber-700">
-                “Consistency matters more than perfection — small reflections, every day.”
-              </p>
-            </div>
 
             <div className="mt-8 flex justify-end gap-3">
               <Button
@@ -258,6 +305,15 @@ export default function App() {
 
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY));
 
+  // Reminder state
+  const [reminderEnabled, setReminderEnabled] = useState(
+    () => localStorage.getItem(REMINDER_ENABLED_KEY) === "1"
+  );
+  const [reminderTime, setReminderTime] = useState(
+    () => localStorage.getItem(REMINDER_TIME_KEY) || "20:00"
+  );
+  const [toast, setToast] = useState("");
+
   // Load local + theme
   useEffect(() => {
     const s = localStorage.getItem(STORAGE_KEY);
@@ -274,6 +330,58 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
+
+  // Save reminder settings + toast when changed
+  useEffect(() => {
+    localStorage.setItem(REMINDER_ENABLED_KEY, reminderEnabled ? "1" : "0");
+  }, [reminderEnabled]);
+  useEffect(() => {
+    localStorage.setItem(REMINDER_TIME_KEY, reminderTime);
+  }, [reminderTime]);
+
+  // Request permission if enabling
+  useEffect(() => {
+    if (!reminderEnabled) return;
+    if ("Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+    // small toast on enable/change time
+    setToast(`🌼 Reminder set for ${formatTimeLabel(reminderTime)}`);
+    const t = setTimeout(() => setToast(""), 2500);
+    return () => clearTimeout(t);
+  }, [reminderEnabled, reminderTime]);
+
+  // Reminder tick: check every minute; send once/day
+  useEffect(() => {
+    if (!reminderEnabled) return;
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const currentHHMM = `${hh}:${mm}`;
+      const todayKey = toDateKey(now);
+
+      const lastSent = localStorage.getItem(REMINDER_LAST_SENT_KEY);
+      if (currentHHMM === reminderTime && lastSent !== todayKey) {
+        // Try Notification; fallback to alert
+        const title = "🌼 Gentle Gratitude Reminder";
+        const body = "Pause for a moment — what made you smile today?";
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(title, { body });
+          } catch {
+            alert("🌿 Pause for a moment — what made you smile today?");
+          }
+        } else {
+          alert("🌿 Pause for a moment — what made you smile today?");
+        }
+        localStorage.setItem(REMINDER_LAST_SENT_KEY, todayKey);
+      }
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [reminderEnabled, reminderTime]);
 
   // Merge Drive restore without overwriting local (id wins; latest fields kept)
   function handleRestoreFromDrive(payload) {
@@ -404,6 +512,9 @@ export default function App() {
   /* Render */
   return (
     <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+      {/* Toast */}
+      <Toast message={toast} onClose={() => setToast("")} />
+
       {/* Welcome Overlay */}
       <WelcomeModal
         open={showWelcome}
@@ -416,6 +527,10 @@ export default function App() {
           localStorage.setItem(WELCOME_KEY, "1");
           setView("journal");
         }}
+        reminderEnabled={reminderEnabled}
+        reminderTime={reminderTime}
+        onReminderEnabled={(v) => setReminderEnabled(v)}
+        onReminderTime={(v) => setReminderTime(v)}
       />
 
       {/* Header */}
@@ -502,41 +617,41 @@ export default function App() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent>
-              <h3 className="font-semibold mb-2">All entries (latest first)</h3>
-              {pastSorted.length === 0 ? (
-                <p className="text-sm text-gray-500">No entries yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {pastSorted.map((e) => (
-                    <div key={e.id} className="rounded-lg border p-3">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                        <div>
-                          <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
-                          <div className="text-sm text-gray-600">
-                            Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+            <Card>
+              <CardContent>
+                <h3 className="font-semibold mb-2">All entries (latest first)</h3>
+                {pastSorted.length === 0 ? (
+                  <p className="text-sm text-gray-500">No entries yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {pastSorted.map((e) => (
+                      <div key={e.id} className="rounded-lg border p-3">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                          <div>
+                            <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
+                            <div className="text-sm text-gray-600">
+                              Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                            </div>
+                            <div className="mt-1 font-medium">{e.question}</div>
+                            <div className="mt-1 whitespace-pre-wrap text-sm">{e.entry}</div>
                           </div>
-                          <div className="mt-1 font-medium">{e.question}</div>
-                          <div className="mt-1 whitespace-pre-wrap text-sm">{e.entry}</div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
-                          <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                          <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                            <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
 
-              <div className="flex flex-wrap gap-2 mt-4">
-                <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
-                <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
-                <Button onClick={exportPdf}>Export .PDF</Button>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+                  <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+                  <Button onClick={exportPdf}>Export .PDF</Button>
+                </div>
+              </CardContent>
+            </Card>
         </div>
       )}
 
@@ -583,4 +698,12 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+/* ===== utils ===== */
+function formatTimeLabel(hhmm) {
+  const [h, m] = hhmm.split(":").map((x) => parseInt(x, 10));
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = ((h + 11) % 12) + 1;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }

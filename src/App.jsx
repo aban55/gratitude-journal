@@ -12,12 +12,17 @@ import jsPDF from "jspdf";
 /* =========================
    Constants & Helpers
 ========================= */
+const APP_VERSION = "1.1.0"; // bump when you ship
 const STORAGE_KEY = "gratitudeEntries";
 const THEME_KEY = "gj_theme";
 const WELCOME_KEY = "gj_seen_welcome";
 const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
 const REMINDER_TIME_KEY = "gj_reminder_time";
 const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
+
+// Local engagement keys (purely offline)
+const ENG_DAYS_KEY = "gj_days_with_entry"; // JSON array of date keys (yyyy-mm-dd) that have ≥1 entry
+const LONGEST_STREAK_KEY = "gj_longest_streak"; // cached longest streak (recomputed anyway)
 
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
@@ -35,7 +40,7 @@ const sections = {
     "Whose effort or patience am I grateful for right now?",
     "In what small way did I show care for someone?",
     "Who surprised me with kindness or humour?",
-    "Who do I want to thank (even silently) and why?"
+    "Who do I want to thank (even silently) and why?",
   ],
 
   "Self & Growth": [
@@ -44,7 +49,7 @@ const sections = {
     "How did I bounce back from a challenge recently?",
     "What have I learned about myself this week?",
     "What small win shows I’m growing?",
-    "Where did I choose progress over perfection?"
+    "Where did I choose progress over perfection?",
   ],
 
   "Blessings & Privileges": [
@@ -53,7 +58,7 @@ const sections = {
     "What freedom or choice do I often overlook?",
     "Who or what is part of my safety net?",
     "What knowledge or education helped me solve something today?",
-    "How can I use my good fortune to ease someone else’s path?"
+    "How can I use my good fortune to ease someone else’s path?",
   ],
 
   "Nature & Calm": [
@@ -62,7 +67,7 @@ const sections = {
     "What tiny moment of beauty made me pause?",
     "What space in my surroundings feels like a sanctuary?",
     "What simple pleasure grounded me today?",
-    "Where did I notice light, wind, birds, sky, or trees?"
+    "Where did I notice light, wind, birds, sky, or trees?",
   ],
 
   "Work & Purpose": [
@@ -71,7 +76,7 @@ const sections = {
     "What skill did I use well today?",
     "What small step moved me forward?",
     "Where did I create value for someone else?",
-    "What felt meaningful about my effort?"
+    "What felt meaningful about my effort?",
   ],
 
   "Learning & Inspiration": [
@@ -80,7 +85,7 @@ const sections = {
     "What new thing did I notice or understand better?",
     "What did I read, hear, or watch that stayed with me?",
     "How did curiosity improve my day?",
-    "What perspective shift am I thankful for?"
+    "What perspective shift am I thankful for?",
   ],
 
   "Health & Wellbeing": [
@@ -89,7 +94,7 @@ const sections = {
     "What rest or nourishment felt healing?",
     "Where am I noticing strength or recovery lately?",
     "How did I care for my mind today?",
-    "What small ritual helped me feel balanced?"
+    "What small ritual helped me feel balanced?",
   ],
 
   "Perspective & Hope": [
@@ -98,11 +103,11 @@ const sections = {
     "How has a tough season shaped my empathy or courage?",
     "What reminder helps me see life is unfolding in my favour?",
     "What am I thankful for that I usually take for granted?",
-    "What would future-me thank present-me for today?"
-  ]
+    "What would future-me thank present-me for today?",
+  ],
 };
 
-/* ===== new shuffle helpers ===== */
+/* ===== shuffle helpers ===== */
 function pickRandom(arr) {
   if (!arr || !arr.length) return "";
   return arr[Math.floor(Math.random() * arr.length)];
@@ -112,6 +117,7 @@ function pickRandomQuestion(sectionName) {
   return pickRandom(qs);
 }
 
+/* ===== date utils ===== */
 function parseDate(src) {
   if (!src) return null;
   if (src instanceof Date) return isNaN(src) ? null : src;
@@ -145,6 +151,8 @@ const fmtDate = (src) => {
     ? d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
     : "Invalid Date";
 };
+
+/* ===== mood & sentiment ===== */
 function moodLabel(m) {
   if (m <= 3) return "😞 Sad / Low";
   if (m <= 6) return "😐 Neutral";
@@ -165,6 +173,8 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
+
+/* ===== file download helper ===== */
 function triggerDownload(blob, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -174,7 +184,7 @@ function triggerDownload(blob, name) {
 }
 
 /* =========================
-   Small Toast
+   Toast
 ========================= */
 function Toast({ message, onClose }) {
   if (!message) return null;
@@ -187,7 +197,89 @@ function Toast({ message, onClose }) {
 }
 
 /* =========================
-   Welcome Modal Component
+   Feedback Modal
+========================= */
+function FeedbackModal({ open, onClose, onSubmit }) {
+  const [rating, setRating] = useState(0);
+  const [category, setCategory] = useState("general");
+  const [message, setMessage] = useState("");
+
+  if (!open) return null;
+
+  const emojis = [
+    { v: 1, label: "😣" },
+    { v: 2, label: "😕" },
+    { v: 3, label: "😐" },
+    { v: 4, label: "🙂" },
+    { v: 5, label: "🤩" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center">
+      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
+        <h3 className="text-xl font-semibold mb-2">Share quick feedback</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Your journal stays on your device. Feedback is sent separately and never includes your entries.
+        </p>
+
+        <div className="mb-3">
+          <label className="text-sm font-medium">Overall</label>
+          <div className="flex gap-2 mt-2">
+            {emojis.map((e) => (
+              <button
+                key={e.v}
+                onClick={() => setRating(e.v)}
+                className={`text-2xl rounded-md px-2 py-1 border ${
+                  rating === e.v ? "bg-amber-100 border-amber-300" : "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                }`}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-sm font-medium">Topic</label>
+          <select
+            className="mt-1 w-full border rounded-md px-2 py-1 bg-white dark:bg-gray-800"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="general">General</option>
+            <option value="bugs">Bug</option>
+            <option value="design">Design/Flow</option>
+            <option value="features">New Feature</option>
+            <option value="performance">Performance</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-sm font-medium">Suggestions (optional)</label>
+          <Textarea
+            placeholder="What would make this better for you?"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => {
+              onSubmit({ rating, category, message });
+            }}
+          >
+            Submit
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Welcome Modal
 ========================= */
 function WelcomeModal({
   open,
@@ -197,6 +289,7 @@ function WelcomeModal({
   reminderTime,
   onReminderEnabled,
   onReminderTime,
+  onOpenFeedback, // new
 }) {
   const [showAbout, setShowAbout] = useState(false);
 
@@ -212,6 +305,19 @@ function WelcomeModal({
           🌿 Welcome to Your Gratitude Journal
         </h2>
 
+        {/* Privacy note */}
+        <div className="mb-4 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200">
+          <strong>Private by design.</strong> Your journal entries are stored only on your device.
+          If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+          Feedback, if you share it, is separate and contains no journal content.
+          <button
+            onClick={onOpenFeedback}
+            className="ml-2 text-amber-700 underline hover:text-amber-900"
+          >
+            Leave feedback →
+          </button>
+        </div>
+
         {!showAbout ? (
           <>
             <p className="leading-relaxed text-[15px]">
@@ -221,9 +327,7 @@ function WelcomeModal({
             </p>
 
             <div className="mt-6">
-              <h3 className="font-semibold text-lg mb-2 text-amber-900">
-                ✨ How it works
-              </h3>
+              <h3 className="font-semibold text-lg mb-2 text-amber-900">✨ How it works</h3>
               <ul className="list-disc pl-6 space-y-1 text-[15px]">
                 <li>Select a question or write freely about what you’re thankful for.</li>
                 <li>Record your reflection and set your mood (1–10).</li>
@@ -234,36 +338,35 @@ function WelcomeModal({
 
             {/* Habit & Reminder */}
             <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <h4 className="font-semibold text-amber-800 mb-2">
-                🌞 Build Your Daily Habit
-              </h4>
+              <h4 className="font-semibold text-amber-800 mb-2">🌞 Build Your Daily Habit</h4>
               <p className="text-[15px] text-amber-800/90 leading-relaxed mb-3">
                 Take two quiet minutes each day to pause and note one thing you’re grateful for.
-                Consistency > perfection — tiny steps, every day.
+                Consistency &gt; perfection — tiny steps, every day.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
-  <select
-    value={reminderTime}
-    onChange={(e) => onReminderTime(e.target.value)}
-    className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
-  >
-    <option value="07:00">7:00 AM</option>
-    <option value="12:00">12:00 PM</option>
-    <option value="20:00">8:00 PM</option>
-    <option value="21:00">9:00 PM</option>
-    <option value="22:00">10:00 PM</option>
-  </select>
+                {/* Select time first, then enable */}
+                <select
+                  value={reminderTime}
+                  onChange={(e) => onReminderTime(e.target.value)}
+                  className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
+                >
+                  <option value="07:00">7:00 AM</option>
+                  <option value="12:00">12:00 PM</option>
+                  <option value="20:00">8:00 PM</option>
+                  <option value="21:00">9:00 PM</option>
+                  <option value="22:00">10:00 PM</option>
+                </select>
 
-  <label className="flex items-center gap-2 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={reminderEnabled}
-      onChange={(e) => onReminderEnabled(e.target.checked)}
-    />
-    <span className="text-[15px]">Enable Daily Reminder</span>
-  </label>
-</div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reminderEnabled}
+                    onChange={(e) => onReminderEnabled(e.target.checked)}
+                  />
+                  <span className="text-[15px]">Enable Daily Reminder</span>
+                </label>
+              </div>
 
               <p className="mt-2 text-[13px] text-amber-700">
                 You’ll get a gentle nudge at your chosen time. If notifications are blocked, a small in-app alert appears instead.
@@ -285,10 +388,7 @@ function WelcomeModal({
                 >
                   Maybe Later
                 </Button>
-                <Button
-                  onClick={onStart}
-                  className="bg-amber-600 hover:bg-amber-700 text-white px-6"
-                >
+                <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
                   Get Started
                 </Button>
               </div>
@@ -296,9 +396,7 @@ function WelcomeModal({
           </>
         ) : (
           <>
-            <h3 className="text-xl font-semibold mb-2 text-amber-900">
-              🪷 The Power of Gratitude
-            </h3>
+            <h3 className="text-xl font-semibold mb-2 text-amber-900">🪷 The Power of Gratitude</h3>
             <p className="leading-relaxed text-[15px] mb-4">
               Gratitude is more than a feeling — it’s a practice that reshapes how your mind
               interprets the world. Just a few minutes of journaling each day can:
@@ -318,10 +416,7 @@ function WelcomeModal({
               >
                 ← Back
               </Button>
-              <Button
-                onClick={onStart}
-                className="bg-amber-600 hover:bg-amber-700 text-white px-6"
-              >
+              <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
                 Start Journaling
               </Button>
             </div>
@@ -361,6 +456,18 @@ export default function App() {
   );
   const [toast, setToast] = useState("");
 
+  // Feedback modal
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  // Engagement stats (derived)
+  const [stats, setStats] = useState({
+    currentStreak: 0,
+    longestStreak: Number(localStorage.getItem(LONGEST_STREAK_KEY) || 0),
+    entriesThisWeek: 0,
+    entriesThisMonth: 0,
+    avgMood7d: 0,
+  });
+
   // Load local + theme
   useEffect(() => {
     const s = localStorage.getItem(STORAGE_KEY);
@@ -373,9 +480,20 @@ export default function App() {
     const th = localStorage.getItem(THEME_KEY);
     if (th) setDark(th === "dark");
   }, []);
-  // Persist local
+
+  // Persist local entries
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    // Recompute stats whenever entries change
+    const newStats = computeEngagement(entries);
+    setStats((prev) => {
+      const longest = Math.max(prev.longestStreak, newStats.longestStreak);
+      localStorage.setItem(LONGEST_STREAK_KEY, String(longest));
+      return { ...newStats, longestStreak: longest };
+    });
+    // Store day keys with entries (optional, helpful for insights)
+    const daySet = Array.from(buildEntryDaySet(entries));
+    localStorage.setItem(ENG_DAYS_KEY, JSON.stringify(daySet));
   }, [entries]);
 
   // Save reminder settings + toast when changed
@@ -394,20 +512,18 @@ export default function App() {
         Notification.requestPermission().catch(() => {});
       }
     }
-    // small toast on enable/change time
     setToast(`🌼 Reminder set for ${formatTimeLabel(reminderTime)}`);
     const t = setTimeout(() => setToast(""), 2500);
     return () => clearTimeout(t);
   }, [reminderEnabled, reminderTime]);
 
-  // ===== auto-shuffle on load (every time) =====
+  // Auto-shuffle on load (every time)
   useEffect(() => {
     const allSections = Object.keys(sections);
     const randomSection = pickRandom(allSections);
     const randomQuestion = pickRandomQuestion(randomSection);
     setSection(randomSection);
     setQuestion(randomQuestion);
-    // fresh prompt toast
     setToast("🌼 Fresh prompt loaded!");
     const t = setTimeout(() => setToast(""), 2000);
     return () => clearTimeout(t);
@@ -425,7 +541,6 @@ export default function App() {
 
       const lastSent = localStorage.getItem(REMINDER_LAST_SENT_KEY);
       if (currentHHMM === reminderTime && lastSent !== todayKey) {
-        // Try Notification; fallback to alert
         const title = "🌼 Gentle Gratitude Reminder";
         const body = "Pause for a moment — what made you smile today?";
         if ("Notification" in window && Notification.permission === "granted") {
@@ -443,7 +558,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [reminderEnabled, reminderTime]);
 
-  // Merge Drive restore without overwriting local (id wins; latest fields kept)
+  // Merge Drive restore without overwriting local
   function handleRestoreFromDrive(payload) {
     if (!payload || !Array.isArray(payload.entries)) return;
     const incoming = payload.entries;
@@ -550,15 +665,21 @@ export default function App() {
         pdf.addPage();
         y = marginY;
       }
-      pdf.setFont("Times", "bold"); pdf.setFontSize(14);
-      pdf.text(fmtDate(e.iso || e.date), marginX, y); y += lineH;
+      pdf.setFont("Times", "bold");
+      pdf.setFontSize(14);
+      pdf.text(fmtDate(e.iso || e.date), marginX, y);
+      y += lineH;
 
-      pdf.setFont("Times", "normal"); pdf.setFontSize(12);
-      pdf.text(`Section: ${e.section}`, marginX, y); y += lineH;
-      pdf.text(`Mood: ${e.mood}/10  |  ${e.sentiment}`, marginX, y); y += lineH;
+      pdf.setFont("Times", "normal");
+      pdf.setFontSize(12);
+      pdf.text(`Section: ${e.section}`, marginX, y);
+      y += lineH;
+      pdf.text(`Mood: ${e.mood}/10  |  ${e.sentiment}`, marginX, y);
+      y += lineH;
 
       pdf.setFont("Times", "bold");
-      pdf.text(`Q: ${e.question}`, marginX, y); y += lineH;
+      pdf.text(`Q: ${e.question}`, marginX, y);
+      y += lineH;
 
       pdf.setFont("Times", "normal");
       const lines = pdf.splitTextToSize(e.entry || "", 520);
@@ -582,11 +703,57 @@ export default function App() {
     return () => clearTimeout(t);
   }
 
+  /* ===== feedback submission ===== */
+  async function submitFeedback({ rating, category, message }) {
+    try {
+      const payload = {
+        rating: Number(rating) || null,
+        category: category || "general",
+        message: message || "",
+        clientTime: new Date().toISOString(),
+        device: `${navigator.platform} • ${navigator.userAgent}`,
+        version: APP_VERSION,
+        stats, // include local, non-sensitive engagement stats
+      };
+      const resp = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(() => ({ ok: false }));
+      if (!resp.ok || !data?.ok) throw new Error(data?.error || "Submit failed");
+      setToast("💌 Thanks for your feedback!");
+      setFeedbackOpen(false);
+    } catch (e) {
+      setToast("⚠️ Could not send feedback (offline?). Saved locally.");
+      // Optional: stash locally for later retry
+      const q = JSON.parse(localStorage.getItem("gj_feedback_queue") || "[]");
+      q.push({
+        rating,
+        category,
+        message,
+        clientTime: new Date().toISOString(),
+        version: APP_VERSION,
+      });
+      localStorage.setItem("gj_feedback_queue", JSON.stringify(q));
+      setFeedbackOpen(false);
+    } finally {
+      setTimeout(() => setToast(""), 2500);
+    }
+  }
+
   /* Render */
   return (
     <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
       {/* Toast */}
       <Toast message={toast} onClose={() => setToast("")} />
+
+      {/* Feedback Modal */}
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        onSubmit={submitFeedback}
+      />
 
       {/* Welcome Overlay */}
       <WelcomeModal
@@ -603,22 +770,26 @@ export default function App() {
         reminderEnabled={reminderEnabled}
         reminderTime={reminderTime}
         onReminderEnabled={(v) => setReminderEnabled(v)}
-        onReminderTime={(v) => onReminderTime(v)}
+        onReminderTime={(v) => setReminderTime(v)}
+        onOpenFeedback={() => setFeedbackOpen(true)}
       />
 
       {/* Header */}
       <header className="flex justify-between items-center mb-2">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button
-          variant="outline"
-          onClick={() => {
-            const next = !dark;
-            setDark(next);
-            localStorage.setItem(THEME_KEY, next ? "dark" : "light");
-          }}
-        >
-          {dark ? "☀️ Light" : "🌙 Dark"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setFeedbackOpen(true)}>💬 Feedback</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const next = !dark;
+              setDark(next);
+              localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+            }}
+          >
+            {dark ? "☀️ Light" : "🌙 Dark"}
+          </Button>
+        </div>
       </header>
       <p className="text-center text-gray-500 mb-4 italic">“{quote}”</p>
 
@@ -639,7 +810,6 @@ export default function App() {
                   value={section}
                   onChange={(v) => {
                     setSection(v);
-                    // auto-pick a random question for the chosen section
                     const q = pickRandomQuestion(v);
                     setQuestion(q || "");
                   }}
@@ -747,7 +917,18 @@ export default function App() {
       {view === "summary" && (
         <Card>
           <CardContent className="space-y-4">
+            {/* Engagement snapshot (offline) */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <SummaryStat label="Current Streak" value={`${stats.currentStreak} 🔥`} />
+              <SummaryStat label="Longest Streak" value={`${stats.longestStreak} 🏆`} />
+              <SummaryStat label="This Week" value={String(stats.entriesThisWeek)} />
+              <SummaryStat label="This Month" value={String(stats.entriesThisMonth)} />
+              <SummaryStat label="Avg Mood (7d)" value={stats.avgMood7d ? stats.avgMood7d.toFixed(1) : "—"} />
+            </div>
+
+            {/* Existing charts/insights */}
             <SummaryPanel entries={entries} darkMode={dark} />
+
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
               <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
@@ -777,13 +958,29 @@ export default function App() {
 
       {/* Footer */}
       <div className="flex justify-between items-center mt-8">
-        <div className="text-sm text-gray-500">💾 Auto-synced locally</div>
-        <InstallPrompt />
+        <div className="text-sm text-gray-500">
+          💾 Auto-synced locally • v{APP_VERSION}
+        </div>
+        <div className="flex gap-2 items-center">
+          <Button variant="outline" onClick={() => setFeedbackOpen(true)}>💬 Feedback</Button>
+          <InstallPrompt />
+        </div>
       </div>
+
       <div className="text-center mt-3">
         {/* GoogleSync will try silent Drive restore and call handleRestoreFromDrive when available */}
         <GoogleSync dataToSync={{ entries }} onRestore={handleRestoreFromDrive} />
       </div>
+    </div>
+  );
+}
+
+/* ===== small stat capsule ===== */
+function SummaryStat({ label, value }) {
+  return (
+    <div className="rounded-xl border bg-white/60 dark:bg-gray-800/60 px-3 py-3 text-center">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
     </div>
   );
 }
@@ -794,4 +991,82 @@ function formatTimeLabel(hhmm) {
   const ampm = h >= 12 ? "PM" : "AM";
   const h12 = ((h + 11) % 12) + 1;
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+/* ===== engagement computation (offline) ===== */
+function buildEntryDaySet(entries) {
+  const set = new Set();
+  for (const e of entries || []) {
+    const k = toDateKey(e.iso || e.date);
+    if (k) set.add(k);
+  }
+  return set;
+}
+
+function computeEngagement(entries) {
+  const daySet = buildEntryDaySet(entries);
+  const dayKeys = Array.from(daySet).sort(); // ascending
+
+  // Current streak: walk backward from today
+  const today = new Date();
+  let cur = 0;
+  let cursor = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  while (daySet.has(cursor.toISOString().slice(0, 10))) {
+    cur += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+
+  // Longest streak: scan runs of consecutive days
+  let longest = 0;
+  if (dayKeys.length) {
+    let run = 1;
+    for (let i = 1; i < dayKeys.length; i++) {
+      const prev = new Date(dayKeys[i - 1]);
+      const curr = new Date(dayKeys[i]);
+      const diff = (curr - prev) / (24 * 3600 * 1000);
+      if (diff === 1) {
+        run += 1;
+        longest = Math.max(longest, run);
+      } else {
+        longest = Math.max(longest, run);
+        run = 1;
+      }
+    }
+    longest = Math.max(longest, run);
+  }
+
+  // Entries this week & month + avg mood (7d)
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday-based
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let entriesThisWeek = 0;
+  let entriesThisMonth = 0;
+
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  let moodSum7 = 0;
+  let moodCount7 = 0;
+
+  for (const e of entries || []) {
+    const d = parseDate(e.iso || e.date);
+    if (!d) continue;
+    if (d >= startOfWeek) entriesThisWeek += 1;
+    if (d >= startOfMonth) entriesThisMonth += 1;
+    if (d >= sevenDaysAgo) {
+      if (typeof e.mood === "number") {
+        moodSum7 += e.mood;
+        moodCount7 += 1;
+      }
+    }
+  }
+
+  const avgMood7d = moodCount7 ? moodSum7 / moodCount7 : 0;
+
+  return { currentStreak: cur, longestStreak: longest, entriesThisWeek, entriesThisMonth, avgMood7d };
 }

@@ -1,87 +1,70 @@
 // src/InstallPrompt.jsx
 import React, { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
-export default function InstallPrompt({ inline = false }) {
-  const [deferred, setDeferred] = useState(null);
-  const [canInstall, setCanInstall] = useState(false);
-  const [installed, setInstalled] = useState(false);
+export default function InstallPrompt() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showHint, setShowHint] = useState(false);
 
+  // Capture the install prompt event
   useEffect(() => {
-    const onBeforeInstall = (e) => {
-      // Intercept so we can control when to show the prompt
+    const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
-      setDeferred(e);
-      setCanInstall(true);
-
-      // Auto prompt ONCE per session to avoid console warning
-      const autoKey = "gj_pwa_autoprompted";
-      const alreadyAutoPrompted = sessionStorage.getItem(autoKey) === "1";
-      if (!alreadyAutoPrompted) {
-        (async () => {
-          try {
-            const choice = await e.prompt(); // show now
-            // choice = { outcome: 'accepted' | 'dismissed' }
-            // Mark that we tried auto-prompt this session
-            sessionStorage.setItem(autoKey, "1");
-            // After prompting, this event is single-use; clear it
-            setDeferred(null);
-            setCanInstall(false);
-            // If dismissed, we’ll show manual button next time event fires again
-          } catch {
-            // ignore
-          }
-        })();
-      }
+      setDeferredPrompt(e);
     };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
-    const onInstalled = () => {
-      setInstalled(true);
-      setCanInstall(false);
-      setDeferred(null);
-      // optional: clean session flag
-      sessionStorage.removeItem("gj_pwa_autoprompted");
-      // console.log("✅ App installed");
-    };
+    // Detect already-installed state
+    window.addEventListener("appinstalled", () => setIsInstalled(true));
 
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    window.addEventListener("appinstalled", onInstalled);
+    // iOS Safari hint
+    const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
+    if (isIOS && !isStandalone) setShowHint(true);
+
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-      window.removeEventListener("appinstalled", onInstalled);
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt
+      );
     };
   }, []);
 
   const handleInstall = async () => {
-    if (!deferred) {
-      alert("Install prompt not available yet. Try again in a moment.");
-      return;
-    }
-    const choice = await deferred.prompt();
-    // choice.outcome is 'accepted' | 'dismissed'
-    // This event can only be used once
-    setDeferred(null);
-    setCanInstall(false);
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") setIsInstalled(true);
+    setDeferredPrompt(null);
   };
 
-  if (installed || !canInstall) return null;
-
-  // Render either inline small button (for putting inside a banner)
-  // or floating FAB style (default).
-  const Button = (
-    <button
-      onClick={handleInstall}
-      className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"
-    >
-      📱 Install App
-    </button>
-  );
-
-  if (inline) return Button;
+  if (isInstalled) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 border rounded-lg shadow p-3">
-      <div className="text-sm mb-2">Install Gratitude Journal?</div>
-      {Button}
-    </div>
+    <>
+      {deferredPrompt && (
+        <motion.button
+          onClick={handleInstall}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.3 }}
+          className="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700"
+        >
+          📲 Install App
+        </motion.button>
+      )}
+
+      {showHint && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed bottom-5 left-5 right-5 text-center bg-yellow-100 text-yellow-800 p-3 rounded-lg shadow"
+        >
+          💡 Tap <strong>Share ▸ Add to Home Screen</strong> to install this app
+        </motion.div>
+      )}
+    </>
   );
 }

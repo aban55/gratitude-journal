@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -9,7 +9,6 @@ import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
 import jsPDF from "jspdf";
 
-/* ---- Quotes ---- */
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
   "Peace begins the moment you choose gratitude.",
@@ -19,7 +18,6 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-/* ---- Sections ---- */
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -58,37 +56,13 @@ const sections = {
   ],
 };
 
-/* ---- Helpers ---- */
-function moodLabel(mood) {
-  if (mood <= 3) return "😞 Sad / Low";
-  if (mood <= 6) return "😐 Neutral";
-  if (mood <= 8) return "🙂 Positive";
-  return "😄 Uplifted";
-}
-
-function analyzeSentiment(text, mood) {
-  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
-  const neg = ["tired", "sad", "angry", "stressed", "worried"];
-  let s = 0;
-  const t = text.toLowerCase();
-  pos.forEach((w) => t.includes(w) && (s += 1));
-  neg.forEach((w) => t.includes(w) && (s -= 1));
-  if (mood >= 7) s++;
-  if (mood <= 3) s--;
-  if (s > 1) return "😊 Positive";
-  if (s === 1) return "🙂 Content";
-  if (s === 0) return "😐 Neutral";
-  return "😟 Stressed";
-}
-
-const toDateKey = (isoOrDate) => {
+function toDateKey(isoOrDate) {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    .toLocaleDateString();
-};
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toLocaleDateString();
+}
 
 export default function App() {
-  const [view, setView] = useState("journal"); // journal | past | summary
+  const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
@@ -113,6 +87,7 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
+
   // Persist local
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));

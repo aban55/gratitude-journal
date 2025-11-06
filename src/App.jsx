@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -65,6 +65,7 @@ function moodLabel(mood) {
   if (mood <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
+
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
@@ -79,10 +80,10 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
+
 const toDateKey = (isoOrDate) => {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    .toLocaleDateString();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toLocaleDateString();
 };
 
 export default function App() {
@@ -111,6 +112,7 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
+
   // Persist local
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
@@ -174,6 +176,7 @@ export default function App() {
     link.download = "Gratitude_Journal.txt";
     link.click();
   };
+
   const exportCsv = () => {
     const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
     const rows = entries.map((e) => [
@@ -191,6 +194,7 @@ export default function App() {
     link.download = "Gratitude_Journal.csv";
     link.click();
   };
+
   const exportJournalPDF = async () => {
     const pdf = new jsPDF("p", "pt", "a4");
     const marginX = 40,
@@ -250,37 +254,6 @@ export default function App() {
     for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
     const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
     setEntries(merged);
-  };
-
-  // -------- Past Entries: horizontal pages --------
-  const pages = useMemo(() => {
-    const grouped = groupByDate(entries);
-    // newest date first
-    const ordered = Object.keys(grouped)
-      .sort((a, b) => new Date(b) - new Date(a))
-      .map((d) => ({ dateKey: d, items: grouped[d] }));
-    return ordered;
-  }, [entries]);
-
-  const scrollerRef = useRef(null);
-  const pageRefs = useRef({}); // key -> ref
-  const [pageIndex, setPageIndex] = useState(0);
-  useEffect(() => {
-    // snap to first page on entering tab
-    if (view === "past" && pages.length && scrollerRef.current) {
-      const k = pages[pageIndex]?.dateKey;
-      if (k && pageRefs.current[k]) {
-        pageRefs.current[k].scrollIntoView({ behavior: "instant", inline: "start" });
-      }
-    }
-  }, [view]); // eslint-disable-line
-
-  const gotoPage = (i) => {
-    if (!pages.length) return;
-    const clamped = Math.max(0, Math.min(pages.length - 1, i));
-    setPageIndex(clamped);
-    const k = pages[clamped].dateKey;
-    pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
   };
 
   return (

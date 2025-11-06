@@ -1,288 +1,425 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * GoogleSync.jsx
+ * - Stores backups in the user's *My Drive* (visible), file name: gratitude_journal_backup.json
+ * - If not signed in, still provides Local Export/Import so users never lose data
+ * - Props:
+ *    - dataToSync: any serializable object (e.g., { entries })
+ *    - onRestore(json): callback when a backup is restored (Drive or local)
+ */
 
 const CLIENT_ID = "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
 const API_KEY = "AIzaSyDJRs5xgDpvBe1QJk9RS_rZB1_igSzMRGc";
-const SCOPES = "https://www.googleapis.com/auth/drive.appdata";
+const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const BACKUP_NAME = "gratitude_journal_backup.json";
 
 export default function GoogleSync({ dataToSync, onRestore }) {
-  const [accessToken, setAccessToken] = useState(localStorage.getItem("gj_access_token") || null);
-  const [user, setUser] = useState(null);
-  const [status, setStatus] = useState("idle");
-  const [lastRestored, setLastRestored] = useState(localStorage.getItem("gj_last_restored") || null);
-  const [lastSynced, setLastSynced] = useState(localStorage.getItem("gj_last_synced") || null);
+  // Google auth/client state
+  const [gapiReady, setGapiReady] = useState(false);
+  const [driveReady, setDriveReady] = useState(false);
   const tokenClientRef = useRef(null);
+  const [accessToken, setAccessToken] = useState(
+    () => localStorage.getItem("gj_access_token") || null
+  );
+  const [user, setUser] = useState(null);
 
-  // ---------------- INIT GOOGLE API ----------------
-  useEffect(() => {
-    const loadGoogle = async () => {
-      try {
-        // Load GIS
-        if (!window.google?.accounts) {
-          await new Promise((res) => {
-            const s = document.createElement("script");
-            s.src = "https://accounts.google.com/gsi/client";
-            s.onload = res;
-            document.body.appendChild(s);
-          });
-        }
+  // UI state
+  const [status, setStatus] = useState("idle"); // idle | uploading | restoring | up_to_date | error
+  const [message, setMessage] = useState("");
 
-        // Load GAPI
-        if (!window.gapi?.client) {
-          await new Promise((res) => {
-            const s = document.createElement("script");
-            s.src = "https://apis.google.com/js/api.js";
-            s.onload = async () => {
-              await window.gapi.load("client", async () => {
-                await window.gapi.client.init({
-                  apiKey: API_KEY,
-                  discoveryDocs: [
-                    "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
-                  ],
-                });
-                res();
+  // Found backup metadata
+  const [backupFile, setBackupFile] = useState(null); // { id, name, modifiedTime, mimeType }
+
+  // ---- Helpers ---------------------------------------------------------------
+
+  const log = (...args) => console.log("[GoogleSync]", ...args);
+
+  const isSignedIn = useMemo(() => !!accessToken, [accessToken]);
+
+  const ensureGoogleIdentityScript = () =>
+    new Promise((resolve) => {
+      if (window.google?.accounts) return resolve();
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true;
+      s.onload = resolve;
+      document.head.appendChild(s);
+    });
+
+  const ensureGapiClient = () =>
+    new Promise((resolve, reject) => {
+      if (window.gapi?.client) return resolve();
+      const script = document.createElement("script");
+      script.src = "https://apis.google.com/js/api.js";
+      script.async = true;
+      script.onload = async () => {
+        try {
+          await window.gapi.load("client", async () => {
+            try {
+              await window.gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: [
+                  "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+                ],
               });
-            };
-            document.body.appendChild(s);
-          });
-        }
-
-        // Init OAuth client
-        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID,
-          scope: SCOPES,
-          prompt: "",
-          callback: (resp) => {
-            if (resp?.access_token) {
-              localStorage.setItem("gj_access_token", resp.access_token);
-              setAccessToken(resp.access_token);
-              fetchUser(resp.access_token);
+              resolve();
+            } catch (e) {
+              reject(e);
             }
-          },
-        });
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
 
-        // Restore if already signed in
-        if (accessToken) fetchUser(accessToken);
-        else tokenClientRef.current.requestAccessToken({ prompt: "" });
-      } catch (e) {
-        console.warn("[GoogleSync] Init error:", e);
-      }
-    };
-    loadGoogle();
-  }, []);
+  const initTokenClient = () => {
+    tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (resp) => {
+        if (resp?.access_token) {
+          setAccessToken(resp.access_token);
+          localStorage.setItem("gj_access_token", resp.access_token);
+          fetchUserProfile(resp.access_token);
+        } else {
+          setStatus("error");
+          setMessage("Failed to get access token.");
+        }
+      },
+    });
+  };
 
-  // ---------------- FETCH PROFILE ----------------
-  const fetchUser = async (token) => {
+  const fetchUserProfile = async (token) => {
     try {
       const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const u = await res.json();
-      if (u?.email) {
-        setUser(u);
-        console.log("[GoogleSync] Signed in as:", u.email);
-        await autoRestore();
-      }
-    } catch {
-      setUser(null);
-      setStatus("offline");
-    }
-  };
-
-  // ---------------- AUTO RESTORE ----------------
-  const autoRestore = async () => {
-    try {
-      // Step 1: Local restore
-      const localBackup = localStorage.getItem("gratitude_local_backup");
-      if (localBackup) {
-        const parsed = JSON.parse(localBackup);
-        if (onRestore) onRestore(parsed);
-        setLastRestored(new Date().toLocaleString());
-        console.log("📁 Restored from local backup.");
-        return;
-      }
-
-      // Step 2: Drive restore if signed in
-      if (accessToken) {
-        const file = await locateBackup();
-        if (file?.id) {
-          const res = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
-          const json = await res.json();
-          if (onRestore && json) onRestore(json);
-          setLastRestored(new Date().toLocaleString());
-          localStorage.setItem("gj_last_restored", new Date().toISOString());
-          console.log("☁️ Restored from Drive.");
-        }
-      }
+      const profile = await res.json();
+      setUser(profile);
+      log("Signed in as:", profile);
+      // After sign-in, try to locate existing backup
+      await locateBackup();
     } catch (e) {
-      console.warn("[GoogleSync] Auto restore failed:", e);
+      log("Profile fetch failed", e);
     }
   };
 
-  // ---------------- DRIVE HELPERS ----------------
+  // ---- Drive ops -------------------------------------------------------------
+
   const locateBackup = async () => {
     try {
+      if (!window.gapi?.client) return;
       const res = await window.gapi.client.drive.files.list({
         q: `name='${BACKUP_NAME}' and trashed=false`,
-        spaces: "appDataFolder",
-        fields: "files(id,name,modifiedTime)",
+        fields: "files(id, name, modifiedTime, mimeType)",
+        spaces: "drive",
+        corpora: "user",
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
+        pageSize: 10,
       });
-      return res.result.files?.[0];
+      const files = res.result?.files || [];
+      log("Drive search result:", files);
+      setBackupFile(files[0] || null);
+      return files[0] || null;
     } catch (e) {
-      console.warn("[GoogleSync] locateBackup error:", e);
+      log("locateBackup error:", e);
+      setStatus("error");
+      setMessage("Unable to search Drive. Check API key & OAuth setup.");
       return null;
     }
   };
 
-  const uploadBackup = async () => {
-    if (!accessToken) return;
+  const uploadToDrive = async () => {
+    if (!isSignedIn) return alert("Please sign in first.");
+    setStatus("uploading");
+    setMessage("Syncing to Drive…");
     try {
-      const blob = new Blob([JSON.stringify(dataToSync)], { type: "application/json" });
-      const file = await locateBackup();
+      const payload = JSON.stringify(dataToSync || {}, null, 2);
+      const blob = new Blob([payload], { type: "application/json" });
       const headers = { Authorization: `Bearer ${accessToken}` };
 
-      if (file?.id) {
+      const existing = backupFile || (await locateBackup());
+
+      if (existing?.id) {
+        // Update file content
         await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`,
+          `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media`,
           { method: "PATCH", headers, body: blob }
         );
       } else {
-        const meta = {
+        // Create new multipart file
+        const metadata = {
           name: BACKUP_NAME,
           mimeType: "application/json",
-          parents: ["appDataFolder"],
         };
         const form = new FormData();
         form.append(
           "metadata",
-          new Blob([JSON.stringify(meta)], { type: "application/json" })
+          new Blob([JSON.stringify(metadata)], {
+            type: "application/json",
+          })
         );
         form.append("file", blob);
         await fetch(
-          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true",
           { method: "POST", headers, body: form }
         );
       }
 
-      const ts = new Date().toISOString();
-      setLastSynced(ts);
-      localStorage.setItem("gj_last_synced", ts);
-      setStatus("✅ Synced");
+      await locateBackup(); // refresh metadata
+      setStatus("up_to_date");
+      setMessage("✅ Synced to Google Drive");
+      alert("✅ Synced to Google Drive!");
     } catch (e) {
-      console.warn("[GoogleSync] uploadBackup error:", e);
-      setStatus("⚠️ Sync failed");
+      log("uploadToDrive error:", e);
+      setStatus("error");
+      setMessage("Upload failed. See console.");
+      alert("⚠️ Upload failed. Check console for details.");
     }
   };
 
-  // ---------------- MANUAL RESTORE ----------------
   const restoreFromDrive = async () => {
-    if (!accessToken) return;
+    if (!isSignedIn) return alert("Please sign in first.");
+    setStatus("restoring");
+    setMessage("Restoring from Drive…");
     try {
-      const file = await locateBackup();
-      if (!file?.id) return alert("No backup found in Drive.");
-      const res = await fetch(
+      const file = backupFile || (await locateBackup());
+      if (!file?.id) {
+        setStatus("idle");
+        setMessage("No backup found.");
+        alert("No backup found on Drive yet.");
+        return;
+      }
+
+      const dl = await fetch(
         `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
-      const json = await res.json();
-      if (onRestore && json) onRestore(json);
-      const ts = new Date().toLocaleString();
-      setLastRestored(ts);
-      localStorage.setItem("gj_last_restored", ts);
-      setStatus("✅ Restored from Drive");
+      const json = await dl.json();
+
+      if (!json || typeof json !== "object") {
+        throw new Error("Invalid JSON in Drive backup.");
+      }
+      if (typeof onRestore === "function") onRestore(json);
+      setStatus("up_to_date");
+      setMessage("✅ Restored from Drive");
+      alert("✅ Restored from Google Drive.");
     } catch (e) {
-      console.warn("[GoogleSync] restoreFromDrive error:", e);
-      setStatus("⚠️ Restore failed");
+      log("restoreFromDrive error:", e);
+      setStatus("error");
+      setMessage("Restore failed. See console.");
+      alert("⚠️ Restore failed. See console for details.");
     }
   };
 
-  // ---------------- SIGN IN / OUT ----------------
-  const signIn = () =>
-    tokenClientRef.current?.requestAccessToken({ prompt: "consent" });
+  const signIn = () => tokenClientRef.current?.requestAccessToken();
   const signOut = () => {
     localStorage.removeItem("gj_access_token");
     setAccessToken(null);
     setUser(null);
+    setBackupFile(null);
+    setStatus("idle");
+    setMessage("");
   };
 
-  // ---------------- AUTO SYNC ----------------
-  useEffect(() => {
-    if (!accessToken || !dataToSync) return;
-    const t = setInterval(uploadBackup, 180000); // every 3 mins
-    return () => clearInterval(t);
-  }, [dataToSync, accessToken]);
+  // ---- Local backup (works without sign-in) ----------------------------------
 
-  // ---------------- UI ----------------
+  const exportLocal = () => {
+    const payload = JSON.stringify(dataToSync || {}, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = BACKUP_NAME;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const onImportLocal = async (evt) => {
+    try {
+      const file = evt.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (!json || typeof json !== "object") throw new Error("Invalid JSON");
+      if (typeof onRestore === "function") onRestore(json);
+      setStatus("up_to_date");
+      setMessage("✅ Restored from local file");
+      alert("✅ Restored from local backup.");
+      evt.target.value = ""; // reset
+    } catch (e) {
+      log("Local import error:", e);
+      setStatus("error");
+      setMessage("Local import failed. See console.");
+      alert("⚠️ Local import failed. See console for details.");
+    }
+  };
+
+  // ---- Init on mount ---------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await ensureGoogleIdentityScript();
+        await ensureGapiClient();
+        if (cancelled) return;
+
+        setGapiReady(true);
+        setDriveReady(true);
+        initTokenClient();
+
+        if (accessToken) {
+          // attempt to use existing token
+          fetchUserProfile(accessToken);
+        }
+      } catch (e) {
+        // If any Google script fails, local backup still works.
+        log("GAPI/Identity init failed (local-only mode still works):", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- Auto-upload (debounced) when signed in --------------------------------
+  useEffect(() => {
+    if (!isSignedIn || !driveReady) return;
+    const serialized = JSON.stringify(dataToSync || {});
+    // Skip if empty object
+    if (serialized === "{}") return;
+
+    const t = setTimeout(() => {
+      uploadToDrive().catch(() => {});
+    }, 3000); // 3s debounce
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn, driveReady, JSON.stringify(dataToSync || {})]);
+
+  // ---- UI --------------------------------------------------------------------
+
   return (
-    <div className="mt-6 text-sm text-center">
-      <div
-        className={`p-3 rounded-lg border ${
-          status.startsWith("✅")
-            ? "bg-green-50 border-green-300 text-green-700"
-            : status.startsWith("⚠️")
-            ? "bg-red-50 border-red-300 text-red-700"
-            : "bg-gray-50 border-gray-200 text-gray-700"
-        }`}
-      >
-        <p>{status === "idle" ? "☁️ Drive sync ready" : status}</p>
-        {lastSynced && (
-          <p className="text-xs text-gray-500 mt-1">
-            Last synced: {new Date(lastSynced).toLocaleString()}
+    <div className="space-y-4">
+      {/* Google Drive Sync */}
+      <div className="rounded-xl border p-4">
+        <h3 className="font-semibold text-green-700 mb-2">☁️ Google Drive Sync</h3>
+
+        {!gapiReady || !driveReady ? (
+          <p className="text-sm text-gray-500">
+            Loading Google services… (Local backup available below)
           </p>
+        ) : !isSignedIn ? (
+          <button
+            onClick={signIn}
+            className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
+          >
+            Sign in with Google
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 mb-2">
+              {user?.picture && (
+                <img
+                  src={user.picture}
+                  alt="profile"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <div className="text-sm">
+                <div className="font-medium">{user?.name}</div>
+                <div className="text-gray-500">{user?.email}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={uploadToDrive}
+                className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
+                disabled={status === "uploading"}
+              >
+                {status === "uploading" ? "Syncing…" : "Upload Backup"}
+              </button>
+              <button
+                onClick={restoreFromDrive}
+                className="bg-white border px-3 py-2 rounded hover:bg-gray-50"
+              >
+                Restore from Drive
+              </button>
+              <button
+                onClick={signOut}
+                className="bg-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-400"
+              >
+                Sign Out
+              </button>
+            </div>
+
+            {backupFile && (
+              <p className="text-xs text-gray-500 mt-2">
+                Found backup: <strong>{backupFile.name}</strong> • Last modified:{" "}
+                {new Date(backupFile.modifiedTime).toLocaleString()}
+              </p>
+            )}
+          </>
         )}
-        {lastRestored && (
-          <p className="text-xs text-gray-500">
-            Last restored: {lastRestored}
+
+        {message && (
+          <p
+            className={`text-sm mt-2 ${
+              status === "error"
+                ? "text-red-600"
+                : status === "up_to_date"
+                ? "text-green-600"
+                : "text-gray-600"
+            }`}
+          >
+            {message}
           </p>
         )}
       </div>
 
-      {user ? (
-        <div className="mt-3 space-y-2">
-          <div className="flex items-center justify-center gap-3">
-            <img
-              src={user.picture}
-              alt="avatar"
-              className="w-8 h-8 rounded-full"
-            />
-            <div className="text-left">
-              <p className="font-medium">{user.name}</p>
-              <p className="text-xs text-gray-500">{user.email}</p>
-            </div>
-          </div>
+      {/* Local Backup (works on iPhone / Android / Desktop without sign-in) */}
+      <div className="rounded-xl border p-4">
+        <h3 className="font-semibold text-gray-800 mb-2 dark:text-gray-100">
+          💾 Local Backup
+        </h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={exportLocal}
+            className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
+          >
+            Export JSON
+          </button>
 
-          <div className="flex justify-center gap-2 mt-3">
-            <button
-              onClick={uploadBackup}
-              className="bg-green-600 text-white px-3 py-1 rounded"
-            >
-              Upload Backup
-            </button>
-            <button
-              onClick={restoreFromDrive}
-              className="bg-blue-600 text-white px-3 py-1 rounded"
-            >
-              Restore from Drive
-            </button>
-            <button
-              onClick={signOut}
-              className="bg-gray-400 text-white px-3 py-1 rounded"
-            >
-              Sign Out
-            </button>
-          </div>
+          <label className="bg-white border px-3 py-2 rounded cursor-pointer hover:bg-gray-50">
+            Import JSON
+            <input
+              type="file"
+              accept="application/json"
+              onChange={onImportLocal}
+              hidden
+            />
+          </label>
+
+          <span className="text-xs text-gray-500">
+            Tip: Use Export to save a copy. Use Import to restore on any device.
+          </span>
         </div>
-      ) : (
-        <button
-          className="mt-3 bg-blue-600 text-white px-4 py-2 rounded"
-          onClick={signIn}
-        >
-          Sign in with Google
-        </button>
-      )}
+
+        <p className="text-xs text-gray-500 mt-2">
+          Your entries are also saved in this browser’s storage so you won’t lose data
+          if you’re offline or not signed in. For cross-device moves, use Export/Import
+          or Google Drive.
+        </p>
+      </div>
     </div>
   );
 }

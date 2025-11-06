@@ -7,7 +7,6 @@ import { Slider } from "./ui/Slider.jsx";
 import GoogleSync from "./GoogleSync.jsx";
 import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
-import jsPDF from "jspdf";
 
 /* ---- Quotes ---- */
 const QUOTES = [
@@ -55,7 +54,7 @@ const sections = {
     "How does my body show gratitude when I care for it?",
     "What signs of recovery or strength am I noticing lately?",
   ],
-];
+};
 
 /* ---- Helpers ---- */
 function parseDate(src) {
@@ -72,12 +71,14 @@ function parseDate(src) {
   }
   return null;
 }
+
 const toDateKey = (d) => {
   const x = d instanceof Date ? d : parseDate(d);
   if (!x || isNaN(x)) return null;
   const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
   return y.toISOString().slice(0, 10);
 };
+
 const fmtDate = (iso) => new Date(iso).toLocaleDateString();
 
 function moodLabel(m) {
@@ -86,22 +87,24 @@ function moodLabel(m) {
   if (m <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
+
 function moodToColor(mood) {
   if (mood == null) return "#f3f4f6";
   const t = Math.max(0, Math.min(10, mood)) / 10;
   let from, to, p;
   if (t < 0.5) {
-    from = [239, 68, 68]; // red
-    to = [245, 158, 11]; // amber
+    from = [239, 68, 68];
+    to = [245, 158, 11];
     p = t / 0.5;
   } else {
     from = [245, 158, 11];
-    to = [22, 163, 74]; // green
+    to = [22, 163, 74];
     p = (t - 0.5) / 0.5;
   }
   const c = from.map((f, i) => Math.round(f + (to[i] - f) * p));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
+
 function freqToColor(count) {
   if (!count) return "#f3f4f6";
   const capped = Math.min(count, 5);
@@ -112,19 +115,17 @@ function freqToColor(count) {
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-/* ---- Main App ---- */
+/* ---- App Component ---- */
 export default function App() {
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
   const [heatmapMode, setHeatmapMode] = useState("mood");
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
-
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
   const [entries, setEntries] = useState([]);
-
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
@@ -137,6 +138,7 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
+
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
@@ -160,12 +162,15 @@ export default function App() {
     setMood(5);
     setSelectedDayKey(toDateKey(e.iso));
   };
+
   const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
+
   const openEdit = (item) => {
     setEditing(item);
     setEditText(item.entry);
     setEditMood(item.mood);
   };
+
   const saveEdit = () => {
     if (!editing) return;
     setEntries((arr) =>
@@ -191,25 +196,15 @@ export default function App() {
 
   const { weeks, monthLabels } = useMemo(() => buildYearMatrix(byDay), [byDay]);
   const recent3 = useMemo(
-    () =>
-      [...entries]
-        .sort((a, b) => new Date(b.iso) - new Date(a.iso))
-        .slice(0, 3),
+    () => [...entries].sort((a, b) => new Date(b.iso) - new Date(a.iso)).slice(0, 3),
     [entries]
   );
-  const dayEntries = useMemo(
-    () => byDay.get(selectedDayKey) || [],
-    [byDay, selectedDayKey]
-  );
+  const dayEntries = useMemo(() => byDay.get(selectedDayKey) || [], [byDay, selectedDayKey]);
 
   /* ---- UI ---- */
   return (
-    <div
-      className={`min-h-screen p-6 max-w-3xl mx-auto ${
-        dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
-      }`}
-    >
-      <header className="flex justify-between items-center mb-1">
+    <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+      <header className="flex justify-between items-center mb-2">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
         <Button
           variant="outline"
@@ -223,34 +218,17 @@ export default function App() {
         </Button>
       </header>
 
-      <p className="text-center text-gray-500">
-        Save short reflections daily. Track mood & insights weekly.
-      </p>
+      <p className="text-center text-gray-500">Save short reflections daily. Track mood & insights weekly.</p>
       <p className="italic text-center text-green-600 mb-4">“{quote}”</p>
 
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
-        <Button
-          variant={view === "journal" ? "default" : "outline"}
-          onClick={() => setView("journal")}
-        >
-          ✍️ Journal
-        </Button>
-        <Button
-          variant={view === "past" ? "default" : "outline"}
-          onClick={() => setView("past")}
-        >
-          🕊 Past Entries
-        </Button>
-        <Button
-          variant={view === "summary" ? "default" : "outline"}
-          onClick={() => setView("summary")}
-        >
-          📊 Summary
-        </Button>
+        <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>✍️ Journal</Button>
+        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>🕊 Past Entries</Button>
+        <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>📊 Summary</Button>
       </div>
 
-      {/* ===== Past Entries Tab ===== */}
+      {/* ===== Past Entries ===== */}
       {view === "past" && (
         <div className="space-y-4">
           <Card>
@@ -259,62 +237,32 @@ export default function App() {
               {recent3.length === 0 ? (
                 <p className="text-sm text-gray-500">No entries yet.</p>
               ) : (
-                <div className="space-y-2">
-                  {recent3.map((e) => (
-                    <div
-                      key={e.id}
-                      className="flex justify-between border rounded-lg p-2"
-                    >
-                      <div>
-                        <div className="text-xs text-gray-500">
-                          {fmtDate(e.iso || e.date)} — {e.section}
-                        </div>
-                        <div className="text-sm">
-                          Mood {e.mood}/10 ({moodLabel(e.mood)})
-                        </div>
-                        <div className="text-sm font-medium">{e.question}</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setSelectedDayKey(toDateKey(e.iso))}
-                        >
-                          Open
-                        </Button>
-                        <Button variant="outline" onClick={() => openEdit(e)}>
-                          Edit
-                        </Button>
-                        <Button variant="outline" onClick={() => handleDelete(e.id)}>
-                          Delete
-                        </Button>
-                      </div>
+                recent3.map((e) => (
+                  <div key={e.id} className="border p-2 rounded-md mb-2">
+                    <div className="text-xs text-gray-500">{fmtDate(e.iso)} — {e.section}</div>
+                    <div className="text-sm font-medium">{e.question}</div>
+                    <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
+                    <div className="flex gap-2 mt-1">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedDayKey(toDateKey(e.iso))}>Open</Button>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(e)}>Edit</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(e.id)}>Delete</Button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))
               )}
             </CardContent>
           </Card>
 
-          {/* Rolling Matrix */}
           <div className="rounded-xl border p-3">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex justify-between items-center mb-2">
               <h3 className="font-semibold">Rolling 12-Month Journal Matrix</h3>
-              <div className="flex items-center gap-3 text-sm">
-                <span>
-                  {heatmapMode === "mood" ? "🎨 Mood" : "📅 Frequency"}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setHeatmapMode(heatmapMode === "mood" ? "freq" : "mood")
-                  }
-                >
-                  Toggle
-                </Button>
+              <div className="flex gap-2 items-center">
+                <span>{heatmapMode === "mood" ? "🎨 Mood" : "📅 Frequency"}</span>
+                <Button size="sm" variant="outline" onClick={() => setHeatmapMode(heatmapMode === "mood" ? "freq" : "mood")}>Toggle</Button>
               </div>
             </div>
 
+            {/* Heatmap */}
             <div className="year-matrix">
               {weeks.map((week, wi) => (
                 <div key={wi} className="year-week">
@@ -327,17 +275,11 @@ export default function App() {
                     return (
                       <button
                         key={cell.key}
-                        className={`year-cell ${
-                          cell.key === selectedDayKey
-                            ? "year-cell-selected"
-                            : ""
-                        }`}
+                        className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""}`}
                         style={{ background: color }}
                         title={
                           stat
-                            ? `${cell.label}: ${stat.count} entr${
-                                stat.count > 1 ? "ies" : "y"
-                              }, avg mood ${stat.avgMood?.toFixed(1) || "-"}`
+                            ? `${cell.label}: ${stat.count} entr${stat.count > 1 ? "ies" : "y"}, avg mood ${stat.avgMood?.toFixed(1) || "-"}`
                             : `${cell.label}: No entry`
                         }
                         onClick={() => setSelectedDayKey(cell.key)}
@@ -350,12 +292,7 @@ export default function App() {
 
             <div className="year-month-labels">
               {monthLabels.map((m) => (
-                <span
-                  key={m.key}
-                  style={{ transform: `translateX(${m.offsetPx}px)` }}
-                >
-                  {m.label}
-                </span>
+                <span key={m.key} style={{ transform: `translateX(${m.offsetPx}px)` }}>{m.label}</span>
               ))}
             </div>
 
@@ -378,29 +315,18 @@ export default function App() {
         </div>
       )}
 
+      {/* ===== Edit Modal ===== */}
       {editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl w-[90%] max-w-md space-y-4">
             <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
-            <Textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-            />
+            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
             <div>
-              <p className="text-sm">
-                Mood: {editMood}/10 ({moodLabel(editMood)})
-              </p>
-              <Slider
-                min={1}
-                max={10}
-                value={[editMood]}
-                onChange={(v) => setEditMood(v[0])}
-              />
+              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
+              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
               <Button onClick={saveEdit}>Save</Button>
             </div>
           </div>
@@ -408,9 +334,7 @@ export default function App() {
       )}
 
       <div className="flex justify-between items-center mt-8">
-        <div className="text-sm text-gray-500">
-          💾 Auto-synced to browser storage
-        </div>
+        <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
         <InstallPrompt />
       </div>
 
@@ -437,41 +361,23 @@ function buildYearMatrix(dayMap) {
     const column = [];
     for (let d = 0; d < 7; d++) {
       const key = toDateKey(cur);
-      const label = cur.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      });
+      const label = cur.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       const items = key && dayMap.has(key) ? dayMap.get(key) : [];
       const stat =
         items.length > 0
           ? {
               count: items.length,
-              avgMood:
-                items.reduce((a, e) => a + (e.mood ?? 0), 0) / items.length,
+              avgMood: items.reduce((a, e) => a + (e.mood ?? 0), 0) / items.length,
             }
           : null;
       column.push({ key, label, stat });
-      if (cur.getDate() === 1)
-        monthAnchors.push({ key, date: new Date(cur), col: w });
+      if (cur.getDate() === 1) monthAnchors.push({ key, date: new Date(cur), col: w });
       cur.setDate(cur.getDate() + 1);
     }
     weeks.push(column);
   }
 
-  const MONTHS = [
-    "JAN",
-    "FEB",
-    "MAR",
-    "APR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AUG",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DEC",
-  ];
+  const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   const monthLabels = monthAnchors.map((a) => ({
     key: a.key,
     label: MONTHS[a.date.getMonth()],

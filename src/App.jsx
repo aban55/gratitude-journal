@@ -305,19 +305,6 @@ function WelcomeModal({
           🌿 Welcome to Your Gratitude Journal
         </h2>
 
-        {/* Privacy note */}
-        <div className="mb-4 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200">
-          <strong>Private by design.</strong> Your journal entries are stored only on your device.
-          If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
-          Feedback, if you share it, is separate and contains no journal content.
-          <button
-            onClick={onOpenFeedback}
-            className="ml-2 text-amber-700 underline hover:text-amber-900"
-          >
-            Leave feedback →
-          </button>
-        </div>
-
         {!showAbout ? (
           <>
             <p className="leading-relaxed text-[15px]">
@@ -393,6 +380,19 @@ function WelcomeModal({
                 </Button>
               </div>
             </div>
+
+            {/* ✅ Moved privacy note to bottom */}
+            <div className="mt-6 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 text-center leading-relaxed">
+              <strong>Private by design.</strong> Your journal entries are stored only on your device.
+              If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+              Feedback, if you share it, is separate and contains no journal content.
+              <button
+                onClick={onOpenFeedback}
+                className="ml-2 text-amber-700 underline hover:text-amber-900"
+              >
+                Leave feedback →
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -419,6 +419,19 @@ function WelcomeModal({
               <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
                 Start Journaling
               </Button>
+            </div>
+
+            {/* ✅ Also add privacy note below “Start Journaling” */}
+            <div className="mt-6 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 text-center leading-relaxed">
+              <strong>Private by design.</strong> Your journal entries are stored only on your device.
+              If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+              Feedback, if you share it, is separate and contains no journal content.
+              <button
+                onClick={onOpenFeedback}
+                className="ml-2 text-amber-700 underline hover:text-amber-900"
+              >
+                Leave feedback →
+              </button>
             </div>
           </>
         )}

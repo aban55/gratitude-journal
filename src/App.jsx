@@ -422,17 +422,18 @@ function WelcomeModal({
             </div>
 
             {/* ✅ Also add privacy note below “Start Journaling” */}
-            <div className="mt-6 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 text-center leading-relaxed">
-              <strong>Private by design.</strong> Your journal entries are stored only on your device.
-              If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
-              Feedback, if you share it, is separate and contains no journal content.
-              <button
-                onClick={onOpenFeedback}
-                className="ml-2 text-amber-700 underline hover:text-amber-900"
-              >
-                Leave feedback →
-              </button>
-            </div>
+            <div className="mt-6 text-[13px] text-amber-900/80 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 text-center leading-relaxed backdrop-blur-sm">
+  <strong className="text-amber-900">Private by design.</strong> Your journal entries stay only on your device.
+  If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+  Feedback, if you share it, is separate and contains no journal content.
+  <button
+    onClick={onOpenFeedback}
+    className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
+  >
+    Leave feedback →
+  </button>
+</div>
+
           </>
         )}
       </div>

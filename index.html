@@ -2,25 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
     <title>Gratitude Journal</title>
 
     <!-- ✅ PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/icon-192.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
 
-    <!-- ✅ Google API Loader -->
-    <script src="https://apis.google.com/js/api.js"></script>
-
-    <!-- ✅ Basic Analytics Helper -->
-    <script src="/analytics.js" defer></script>
-
-    <!-- Style hint -->
+    <!-- ✅ Theme color for address bar -->
     <meta name="theme-color" content="#16a34a" />
+
+    <!-- ✅ Google API Loader (keep async to not block rendering) -->
+    <script src="https://apis.google.com/js/api.js" async></script>
+
+    <!-- ✅ Analytics / Helper (ensure defer and proper MIME type) -->
+    <script src="/analytics.js" type="text/javascript" defer></script>
+
+    <!-- ✅ Security / CORS hint for API calls (optional improvement) -->
+    <meta
+      http-equiv="Cross-Origin-Opener-Policy"
+      content="same-origin-allow-popups"
+    />
+    <meta
+      http-equiv="Cross-Origin-Embedder-Policy"
+      content="require-corp"
+    />
   </head>
 
   <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <div id="root"></div>
+
+    <!-- ✅ React / Vite entry -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- ✅ Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/service-worker.js')
+            .then(reg => console.log('✅ Service Worker registered:', reg.scope))
+            .catch(err => console.error('❌ SW registration failed:', err));
+        });
+      }
+
+      // ✅ Optional: handle the PWA install prompt properly
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e; // save for manual trigger later
+        console.log('✅ PWA install prompt captured');
+      });
+    </script>
   </body>
 </html>

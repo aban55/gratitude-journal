@@ -1,226 +1,225 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { gapi } from "gapi-script";
-import { motion } from "framer-motion";
 
-const CLIENT_ID = "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
-const API_KEY   = "AIzaSyDJRs5xgDpvBe1QJk9RS_rZB1_igSzMRGc";
-const SCOPES    = "https://www.googleapis.com/auth/drive.file";
-const BACKUP_FILENAME = "gratitude_journal_backup.json";
+// --- Google Drive Credentials ---
+const CLIENT_ID =
+  "814388665595-7f47f03kufur70ut0698l8o53qjhih76.apps.googleusercontent.com";
+const API_KEY = "AIzaSyDJRs5xgDpvBe1QJk9RS_rZB1_igSzMRGc";
+const SCOPES = "https://www.googleapis.com/auth/drive.file";
 
-export default function GoogleSync({
-  dataToSync,
-  onRestore,
-  autoUploadTrigger,   // increment this from App when a save happens
-  darkMode
-}) {
-  const [isReady, setIsReady] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-  const [busy, setBusy] = useState(false);
+export default function GoogleSync({ dataToSync, onRestore }) {
+  const [tokenClient, setTokenClient] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState(null);
-  const latestPayloadRef = useRef(null);
+  const [status, setStatus] = useState("idle"); // idle | uploading | restoring | done | error
 
-  // keep latest payload
-  useEffect(() => { latestPayloadRef.current = dataToSync; }, [dataToSync]);
-
-  // Initialize GAPI
+  // ---- Load GAPI & GIS libraries ----
   useEffect(() => {
-    const start = async () => {
+    const loadLibraries = async () => {
       try {
+        await new Promise((resolve) => gapi.load("client", resolve));
         await gapi.client.init({
           apiKey: API_KEY,
-          clientId: CLIENT_ID,
-          scope: SCOPES,
-          discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
+          discoveryDocs: [
+            "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+          ],
         });
-        const auth = gapi.auth2.getAuthInstance();
-        auth.isSignedIn.listen(setStateFromAuth);
-        setStateFromAuth(auth.isSignedIn.get());
-        setIsReady(true);
+
+        // ✅ Initialize modern OAuth token client
+        const tc = window.google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: (response) => {
+            if (response && response.access_token) {
+              setAccessToken(response.access_token);
+              localStorage.setItem("gj_access_token", response.access_token);
+              fetchUserProfile(response.access_token);
+            } else {
+              console.error("No access token received:", response);
+            }
+          },
+        });
+        setTokenClient(tc);
+
+        // ✅ Restore session if token already exists
+        const saved = localStorage.getItem("gj_access_token");
+        if (saved) {
+          setAccessToken(saved);
+          fetchUserProfile(saved);
+        }
       } catch (err) {
-        console.warn("⚠️ GAPI init failed:", err);
+        console.error("⚠️ GAPI init failed:", err);
       }
     };
-    gapi.load("client:auth2", start);
+
+    // Load GIS script if not yet loaded
+    if (!window.google?.accounts) {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.onload = loadLibraries;
+      document.body.appendChild(script);
+    } else {
+      loadLibraries();
+    }
   }, []);
 
-  function setStateFromAuth(signed) {
-    setIsSignedIn(signed);
-    if (signed) {
-      const profile = gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile();
-      setUser({
-        name: profile.getName(),
-        email: profile.getEmail(),
-        image: profile.getImageUrl(),
-      });
-    } else {
-      setUser(null);
-    }
-  }
-
-  const signIn  = () => gapi.auth2.getAuthInstance().signIn();
-  const signOut = () => gapi.auth2.getAuthInstance().signOut();
-
-  // Find or create the backup file ID
-  async function getOrCreateFileId() {
-    const search = await gapi.client.drive.files.list({
-      q: `name='${BACKUP_FILENAME}' and trashed=false`,
-      fields: "files(id,name)",
-      spaces: "drive",
-    });
-    if (search.result.files?.length) return search.result.files[0].id;
-
-    // create
-    const metadata = { name: BACKUP_FILENAME, mimeType: "application/json" };
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", new Blob([JSON.stringify({ created: Date.now() })], { type: "application/json" }));
-    const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-      method: "POST",
-      headers: new Headers({ Authorization: "Bearer " + gapi.auth.getToken().access_token }),
-      body: form,
-    });
-    const created = await res.json();
-    return created.id;
-  }
-
-  // Overwrite upload (latest wins)
-  async function uploadNow(payload) {
-    if (!isSignedIn) return;
-    setBusy(true);
+  // ---- Fetch Google profile ----
+  const fetchUserProfile = async (token) => {
     try {
-      const fileId = await getOrCreateFileId();
-      const blob = new Blob([JSON.stringify(payload ?? latestPayloadRef.current, null, 2)], {
-        type: "application/json",
+      const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      await gapi.client.request({
-        path: `/upload/drive/v3/files/${fileId}`,
-        method: "PATCH",
-        params: { uploadType: "media" },
-        body: blob,
-      });
-      setBusy(false);
-      toast("✅ Synced to Drive");
-      return true;
-    } catch (e) {
-      console.warn("Upload failed, scheduling background sync…", e);
-      setBusy(false);
-      // Try background sync fallback
-      if ("serviceWorker" in navigator) {
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          navigator.serviceWorker.controller?.postMessage({
-            type: "SET_GRATITUDE_PAYLOAD",
-            payload: latestPayloadRef.current,
-          });
-          await reg.sync.register("sync-gratitude-data");
-          toast("📶 Will sync when back online");
-        } catch {}
-      }
-      return false;
+      const profile = await res.json();
+      setUser(profile);
+      autoRestoreFromDrive(token);
+    } catch (err) {
+      console.error("Failed to fetch profile:", err);
     }
-  }
+  };
 
-  // Manual restore
-  async function restoreNow() {
-    if (!isSignedIn) return;
-    setBusy(true);
+  // ---- Auth Handlers ----
+  const signIn = () => tokenClient?.requestAccessToken();
+  const signOut = () => {
+    localStorage.removeItem("gj_access_token");
+    setAccessToken(null);
+    setUser(null);
+  };
+
+  // ---- Upload backup ----
+  const uploadToDrive = async () => {
+    if (!accessToken) return alert("Please sign in first.");
+    setStatus("uploading");
+
     try {
+      const content = JSON.stringify(dataToSync, null, 2);
+      const blob = new Blob([content], { type: "application/json" });
+
+      // Check for existing file
       const search = await gapi.client.drive.files.list({
-        q: `name='${BACKUP_FILENAME}' and trashed=false`,
-        fields: "files(id,name)",
+        q: "name='gratitude_journal_backup.json'",
+        fields: "files(id, name)",
       });
-      const file = search.result.files?.[0];
-      if (!file) {
-        setBusy(false);
-        return toast("No backup found in Drive");
+      let fileId = search.result.files?.[0]?.id;
+
+      const headers = { Authorization: `Bearer ${accessToken}` };
+
+      if (fileId) {
+        await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+          { method: "PATCH", headers, body: blob }
+        );
+      } else {
+        const metadata = {
+          name: "gratitude_journal_backup.json",
+          mimeType: "application/json",
+        };
+        const form = new FormData();
+        form.append(
+          "metadata",
+          new Blob([JSON.stringify(metadata)], { type: "application/json" })
+        );
+        form.append("file", blob);
+        await fetch(
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+          { method: "POST", headers, body: form }
+        );
       }
-      const res = await gapi.client.drive.files.get({ fileId: file.id, alt: "media" });
-      setBusy(false);
-      if (res.result && onRestore) onRestore(res.result);
-      toast("✅ Restored from Drive");
-    } catch (e) {
-      console.warn(e);
-      setBusy(false);
-      toast("Restore failed");
+
+      setStatus("done");
+      alert("✅ Synced successfully to Google Drive!");
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setStatus("error");
     }
-  }
+  };
 
-  // Auto upload on save trigger
-  useEffect(() => {
-    if (autoUploadTrigger && isReady && isSignedIn) {
-      uploadNow();
+  // ---- Auto restore from Drive ----
+  const autoRestoreFromDrive = async (token) => {
+    try {
+      setStatus("restoring");
+      const res = await gapi.client.drive.files.list({
+        q: "name='gratitude_journal_backup.json'",
+        fields: "files(id, name)",
+      });
+      const file = res.result.files?.[0];
+      if (!file) return setStatus("idle");
+
+      const dl = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const json = await dl.json();
+      if (onRestore && json) onRestore(json);
+      setStatus("done");
+    } catch (err) {
+      console.error("Restore failed:", err);
+      setStatus("error");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoUploadTrigger]);
+  };
 
-  // Retry when back online
+  // ---- Auto Sync on data change ----
   useEffect(() => {
-    const onlineHandler = () => isSignedIn && uploadNow();
-    window.addEventListener("online", onlineHandler);
-    return () => window.removeEventListener("online", onlineHandler);
-  }, [isSignedIn]);
+    if (accessToken && dataToSync) {
+      const timeout = setTimeout(uploadToDrive, 5000); // debounce
+      return () => clearTimeout(timeout);
+    }
+  }, [dataToSync]);
 
-  const cloudColor = darkMode ? "#86efac" : "#16a34a";
-
+  // ---- UI ----
   return (
-    <div className="rounded-lg border p-4 mt-4">
-      <div className="flex items-center gap-2 mb-2">
-        <motion.div
-          animate={{ y: busy ? [0, -2, 0] : 0, opacity: busy ? [1, 0.7, 1] : 1 }}
-          transition={{ repeat: busy ? Infinity : 0, duration: 1.2 }}
-          style={{ width: 20, height: 20, borderRadius: 6, background: cloudColor }}
-        />
-        <p className="font-semibold" style={{ color: cloudColor }}>
-          Google Drive Sync
-        </p>
-      </div>
+    <div className="mt-6 text-center">
+      <h3 className="font-semibold text-green-700 mb-2">
+        ☁️ Google Drive Sync
+      </h3>
 
-      {!isSignedIn ? (
-        <button onClick={signIn} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+      {!accessToken ? (
+        <button
+          onClick={signIn}
+          className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
+        >
           Sign in with Google Drive
         </button>
       ) : (
-        <>
-          <div className="flex items-center gap-3 mb-3">
-            {user?.image && <img src={user.image} className="w-8 h-8 rounded-full" alt="" />}
-            <div className="text-sm">
-              <div className="font-medium">{user?.name}</div>
-              <div className="text-gray-500">{user?.email}</div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-2">
+            {user?.picture && (
+              <img
+                src={user.picture}
+                alt="profile"
+                className="w-8 h-8 rounded-full"
+              />
+            )}
+            <div>
+              <p className="font-medium">{user?.name}</p>
+              <p className="text-sm text-gray-600">{user?.email}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+
+          <div className="flex justify-center gap-3 mt-2">
             <button
-              onClick={() => uploadNow()}
-              disabled={busy}
-              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 disabled:opacity-60"
+              onClick={uploadToDrive}
+              disabled={status === "uploading"}
+              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
             >
-              {busy ? "Syncing…" : "Upload Backup"}
+              {status === "uploading" ? "Syncing..." : "Upload Backup"}
             </button>
             <button
-              onClick={restoreNow}
-              disabled={busy}
-              className="bg-emerald-600 text-white px-3 py-2 rounded hover:bg-emerald-700 disabled:opacity-60"
+              onClick={signOut}
+              className="bg-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-400"
             >
-              Restore
-            </button>
-            <button onClick={signOut} className="bg-gray-300 px-3 py-2 rounded hover:bg-gray-400">
               Sign Out
             </button>
           </div>
-        </>
+        </div>
+      )}
+
+      {status === "restoring" && (
+        <p className="text-sm text-gray-500 mt-2">🔄 Restoring from Drive...</p>
+      )}
+      {status === "done" && (
+        <p className="text-sm text-green-600 mt-2">✅ Up to date</p>
       )}
     </div>
   );
-}
-
-// tiny toast
-function toast(msg) {
-  try {
-    const el = document.createElement("div");
-    el.textContent = msg;
-    el.style.cssText =
-      "position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 12px;border-radius:10px;z-index:9999;font-size:12px;opacity:.95";
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 1800);
-  } catch {}
 }

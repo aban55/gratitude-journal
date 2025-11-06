@@ -406,8 +406,21 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  const [section, setSection] = useState(Object.keys(sections)[0]);
-  const [question, setQuestion] = useState("");
+// Auto-shuffle a random section & question at startup
+const randomSection = useMemo(() => {
+  const keys = Object.keys(sections);
+  return keys[Math.floor(Math.random() * keys.length)];
+}, []);
+
+const randomQuestion = useMemo(() => {
+  const qs = sections[randomSection];
+  return qs[Math.floor(Math.random() * qs.length)];
+}, []);
+
+
+  const [section, setSection] = useState(randomSection);
+  const [question, setQuestion] = useState(randomQuestion);
+
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
 

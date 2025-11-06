@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -9,7 +9,13 @@ import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
 import jsPDF from "jspdf";
 
-// 🌿 Intro blurb + quote pool
+/* =========================
+   Constants & Helpers
+========================= */
+const STORAGE_KEY = "gratitudeEntries";
+const THEME_KEY = "gj_theme";
+const WELCOME_KEY = "gj_seen_welcome";
+
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
   "Peace begins the moment you choose gratitude.",
@@ -19,7 +25,6 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-// 🌻 Sections & prompts (kept + compact)
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -33,29 +38,8 @@ const sections = {
     "What is one thing about my body or health I appreciate?",
     "What habit or discipline am I proud of keeping?",
     "What lesson did a past mistake teach me that helps me now?",
-    "What challenge taught me something valuable?",
-    "What habit am I proud of maintaining?",
-    "How have I improved compared to last month?",
   ],
-  "Blessings & Privileges": [
-  "What everyday comfort (home, electricity, clean water, AC, internet) made my day easier today?",
-  "Which piece of technology or tool saved me time or effort today?",
-  "What part of my education or skills helped me solve something today?",
-  "When did my health, body, or mind serve me well today?",
-  "Who are the people whose support or safety net I can rely on?",
-  "What opportunities are available to me that I sometimes take for granted?",
-  "Which books, teachers, or mentors shaped me — how did that show up today?",
-  "What financial stability or resources quietly reduced stress for me today?",
-  "Which safe spaces (home, neighbourhood, workplace, campus) allowed me to focus or rest?",
-  "What nourishing food or simple meal did I enjoy — and why did it feel good?",
-  "What privilege can I use this week to help someone else?",
-  "If I lost one convenience for a week, which would I miss most — and why am I grateful for it today?"
-],
   "Nature & Calm": [
-    "What part of my home brings me peace or comfort?",
-    "What small thing in nature caught my attention today — light, wind, birds, sky, trees?",
-    "What simple pleasure did I enjoy — food, music, warmth, quiet?",
-    "What modern convenience or tool makes life smoother?",
     "What detail in nature stood out today?",
     "What moment felt peaceful or quiet?",
     "What simple pleasure grounded me today?",
@@ -77,77 +61,241 @@ const sections = {
     "How does my body show gratitude when I care for it?",
     "What signs of recovery or strength am I noticing lately?",
   ],
-  "Perspective & Hope": [
-    "What opportunity am I grateful to have that others may not?",
-    "What am I looking forward to in the coming week?",
-    "Who or what reminds me that life is bigger than my worries?",
-    "How has a tough time in my life shaped who I am today?",
-    "What am I thankful for that I usually take for granted?",
-  ],
 };
 
-// Helpers
-function moodLabel(mood) {
-  if (mood <= 3) return "😞 Sad / Low";
-  if (mood <= 6) return "😐 Neutral";
-  if (mood <= 8) return "🙂 Positive";
+function parseDate(src) {
+  if (!src) return null;
+  if (src instanceof Date) return isNaN(src) ? null : src;
+  if (typeof src === "number") {
+    const d = new Date(src);
+    return isNaN(d) ? null : d;
+  }
+  const d1 = new Date(src);
+  if (!isNaN(d1)) return d1;
+
+  const parts = String(src).trim().split(/[\s,/-]+/).map(Number);
+  if (parts.length >= 3) {
+    const [a, b, c] = parts;
+    const y = c > 31 ? c : parts[2];
+    const m = a > 12 ? b - 1 : a - 1;
+    const day = a > 12 ? a : b;
+    const d2 = new Date(y, m, day);
+    return isNaN(d2) ? null : d2;
+  }
+  return null;
+}
+const toDateKey = (d) => {
+  const dt = parseDate(d);
+  if (!dt) return "";
+  const utc = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  return utc.toISOString().slice(0, 10);
+};
+const fmtDate = (src) => {
+  const d = parseDate(src);
+  return d
+    ? d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+    : "Invalid Date";
+};
+function moodLabel(m) {
+  if (m <= 3) return "😞 Sad / Low";
+  if (m <= 6) return "😐 Neutral";
+  if (m <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
 function analyzeSentiment(text, mood) {
-  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
-  const neg = ["tired", "sad", "angry", "stressed", "worried"];
+  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful", "peace"];
+  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
   let s = 0;
-  const t = text.toLowerCase();
+  const t = (text || "").toLowerCase();
   pos.forEach((w) => t.includes(w) && (s += 1));
   neg.forEach((w) => t.includes(w) && (s -= 1));
-  if (mood >= 7) s++;
-  if (mood <= 3) s--;
+  if (mood >= 7) s += 1;
+  if (mood <= 3) s -= 1;
   if (s > 1) return "😊 Positive";
   if (s === 1) return "🙂 Content";
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
-const toDateKey = (isoOrDate) => {
-  const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    .toLocaleDateString();
-};
+function triggerDownload(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
+/* =========================
+   Welcome Modal Component
+========================= */
+function WelcomeModal({ open, onClose, onStart }) {
+  const [showAbout, setShowAbout] = useState(false);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn"
+      style={{ animationDuration: "0.4s" }}
+    >
+      <div className="max-w-2xl w-[90%] sm:w-[600px] bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl border border-amber-300 p-8 parchment-bg relative">
+        <h2 className="text-3xl font-bold mb-3 flex items-center gap-2">
+          🌿 Welcome to Your Gratitude Journal
+        </h2>
+
+        {!showAbout ? (
+          <>
+            <p className="leading-relaxed text-[15px]">
+              Practising gratitude trains your mind to notice what’s going right.
+              Even a few lines a day can improve mood, reduce stress, and build resilience.
+              This app helps you build that habit—gently and consistently.
+            </p>
+
+            <div className="mt-6">
+              <h3 className="font-semibold text-lg mb-2 text-amber-900">
+                ✨ How it works
+              </h3>
+              <ul className="list-disc pl-6 space-y-1 text-[15px]">
+                <li>Select a question or write freely about what you’re thankful for.</li>
+                <li>Record your reflection and set your mood (1–10).</li>
+                <li>Your entries save automatically — locally and to Google Drive (if signed in).</li>
+                <li>Review, edit, and export from the <i>Past Entries</i> or <i>Summary</i> tabs.</li>
+              </ul>
+            </div>
+
+            <div className="mt-8 flex flex-wrap justify-between items-center gap-3">
+              <button
+                onClick={() => setShowAbout(true)}
+                className="text-sm text-amber-700 underline hover:text-amber-900"
+              >
+                🪷 Why Gratitude Matters
+              </button>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+                >
+                  Maybe Later
+                </Button>
+                <Button
+                  onClick={onStart}
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-6"
+                >
+                  Get Started
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <h3 className="text-xl font-semibold mb-2 text-amber-900">
+              🪷 The Power of Gratitude
+            </h3>
+            <p className="leading-relaxed text-[15px] mb-4">
+              Gratitude is more than a feeling — it’s a practice that reshapes how your mind
+              interprets the world. Just a few minutes of journaling each day can:
+            </p>
+            <ul className="list-disc pl-6 space-y-1 text-[15px]">
+              <li>Reduce stress, anxiety, and overthinking.</li>
+              <li>Improve sleep and emotional balance.</li>
+              <li>Strengthen relationships by increasing empathy.</li>
+              <li>Rewire your brain to spot positive patterns naturally.</li>
+            </ul>
+
+            {/* Habit Guide Section */}
+            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="font-semibold text-amber-800 mb-1">
+                🌞 Build Your Daily Habit
+              </h4>
+              <p className="text-[15px] text-amber-800/90 leading-relaxed">
+                Take just two quiet minutes each day to pause, reflect, and note one thing you’re grateful for.
+                You’ll start noticing calm, clarity, and more optimism — even on difficult days.
+              </p>
+              <p className="mt-2 text-[14px] italic text-amber-700">
+                “Consistency matters more than perfection — small reflections, every day.”
+              </p>
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowAbout(false)}
+                className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={onStart}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-6"
+              >
+                Start Journaling
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Main App
+========================= */
 export default function App() {
-  const [view, setView] = useState("journal"); // journal | past | summary
+  const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  // journal inputs
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
 
-  // data
   const [entries, setEntries] = useState([]);
-
-  // edit modal
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  // Load local
+  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY));
+
+  // Load local + theme
   useEffect(() => {
-    const s = localStorage.getItem("gratitudeEntries");
-    if (s) setEntries(JSON.parse(s));
-    const theme = localStorage.getItem("gj_theme");
-    if (theme) setDark(theme === "dark");
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) setEntries(parsed);
+      } catch {}
+    }
+    const th = localStorage.getItem(THEME_KEY);
+    if (th) setDark(th === "dark");
   }, []);
   // Persist local
   useEffect(() => {
-    localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
 
-  // Save new entry
-  const handleSave = () => {
+  // Merge Drive restore without overwriting local (id wins; latest fields kept)
+  function handleRestoreFromDrive(payload) {
+    if (!payload || !Array.isArray(payload.entries)) return;
+    const incoming = payload.entries;
+    const map = new Map(entries.map((e) => [e.id, e]));
+    for (const it of incoming) {
+      if (!it || !it.id) continue;
+      const merged = {
+        ...map.get(it.id),
+        ...it,
+        sentiment: it.sentiment ?? analyzeSentiment(it.entry || "", it.mood ?? 5),
+      };
+      map.set(it.id, merged);
+    }
+    const mergedList = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+    setEntries(mergedList);
+  }
+
+  /* Create new entry */
+  function handleSave() {
     if (!entry.trim() || !question) return;
-    const sentiment = analyzeSentiment(entry, mood);
     const now = new Date();
     const e = {
       id: now.getTime(),
@@ -157,196 +305,140 @@ export default function App() {
       question,
       entry,
       mood,
-      sentiment,
+      sentiment: analyzeSentiment(entry, mood),
     };
-    setEntries((prev) => [...prev, e]);
+    setEntries((p) => [...p, e]);
     setEntry("");
     setQuestion("");
     setMood(5);
-  };
+  }
 
-  // Delete
-  const handleDelete = (id) =>
-    setEntries((arr) => arr.filter((e) => e.id !== id));
-
-  // Edit modal
-  const openEdit = (item) => {
+  /* Edit/Delete */
+  function openEdit(item) {
     setEditing(item);
     setEditText(item.entry);
     setEditMood(item.mood);
-  };
-  const saveEdit = () => {
+  }
+  function saveEdit() {
     if (!editing) return;
-    const sentiment = analyzeSentiment(editText, editMood);
-    setEntries((arr) =>
-      arr.map((e) =>
-        e.id === editing.id
-          ? { ...e, entry: editText, mood: editMood, sentiment }
-          : e
-      )
-    );
+    const snt = analyzeSentiment(editText, editMood);
+    setEntries((arr) => arr.map((e) => (e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment: snt } : e)));
     setEditing(null);
-  };
+  }
+  function handleDelete(id) {
+    setEntries((arr) => arr.filter((e) => e.id !== id));
+  }
 
-  // Export: TXT, CSV, PDF
-  const exportTxt = () => {
-    const content = entries
+  /* Past view helpers */
+  const pastSorted = useMemo(
+    () => [...entries].sort((a, b) => new Date(b.iso || b.date) - new Date(a.iso || a.date)),
+    [entries]
+  );
+  const recent3 = useMemo(() => pastSorted.slice(0, 3), [pastSorted]);
+
+  /* Exporters */
+  function exportTxt() {
+    const txt = pastSorted
       .map(
         (e) =>
-          `${e.date}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
+          `${fmtDate(e.iso || e.date)}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
       )
       .join("\n----------------\n");
-    const blob = new Blob([content], { type: "text/plain" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "Gratitude_Journal.txt";
-    link.click();
-  };
-  const exportCsv = () => {
+    triggerDownload(new Blob([txt], { type: "text/plain" }), "Gratitude_Journal.txt");
+  }
+  function exportCsv() {
     const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
-    const rows = entries.map((e) => [
-      `"${e.date}"`,
+    const rows = pastSorted.map((e) => [
+      `"${fmtDate(e.iso || e.date)}"`,
       `"${e.section}"`,
       e.mood,
       `"${e.sentiment}"`,
       `"${e.question}"`,
-      `"${e.entry.replace(/"/g, '""')}"`,
+      `"${(e.entry || "").replace(/"/g, '""')}"`,
     ]);
     const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "Gratitude_Journal.csv";
-    link.click();
-  };
-  const exportJournalPDF = async () => {
+    triggerDownload(new Blob([csv], { type: "text/csv" }), "Gratitude_Journal.csv");
+  }
+  function exportPdf() {
+    if (!pastSorted.length) return;
     const pdf = new jsPDF("p", "pt", "a4");
-    const marginX = 40,
-      marginY = 60,
-      lineH = 20;
+    const marginX = 56;
+    const marginY = 64;
+    const lineH = 18;
+
+    pdf.setFont("Times", "bold");
+    pdf.setFontSize(22);
+    pdf.text("🌿 My Gratitude Journal", marginX, marginY);
+    pdf.setFont("Times", "normal");
+    pdf.setFontSize(12);
+    pdf.text(`Exported on ${new Date().toLocaleString()}`, marginX, marginY + 24);
+    pdf.text(`Total entries: ${pastSorted.length}`, marginX, marginY + 42);
+
+    pdf.addPage();
     let y = marginY;
 
-    pdf.setFont("Times", "normal");
-    pdf.setFontSize(16);
-    pdf.text("🌿 My Gratitude Journal", marginX, y);
-    y += 26;
-
-    // group by date asc
-    const byDate = groupByDate(entries);
-    const sortedDates = Object.keys(byDate).sort(
-      (a, b) => new Date(a) - new Date(b)
-    );
-
-    for (const d of sortedDates) {
-      if (y + 60 > pdf.internal.pageSize.height) {
+    for (const e of [...pastSorted].reverse()) {
+      if (y > pdf.internal.pageSize.height - 120) {
         pdf.addPage();
         y = marginY;
       }
-      pdf.setFontSize(12);
-      pdf.setTextColor(34, 139, 34);
-      pdf.text(d, marginX, y);
-      y += 18;
+      pdf.setFont("Times", "bold"); pdf.setFontSize(14);
+      pdf.text(fmtDate(e.iso || e.date), marginX, y); y += lineH;
 
-      for (const e of byDate[d]) {
-        if (y + 90 > pdf.internal.pageSize.height) {
-          pdf.addPage();
-          y = marginY;
-        }
-        pdf.setTextColor(0, 0, 0);
-        pdf.setFontSize(11);
-        pdf.text(`Section: ${e.section}`, marginX, y);
-        y += lineH;
-        pdf.text(`Mood: ${e.mood}/10 | ${e.sentiment}`, marginX, y);
-        y += lineH;
-        pdf.setFont("Times", "bold");
-        pdf.text(`Q: ${e.question}`, marginX, y);
-        y += lineH;
-        pdf.setFont("Times", "normal");
-        const lines = pdf.splitTextToSize(e.entry, 520);
-        pdf.text(lines, marginX, y);
-        y += lines.length * lineH + 14;
-      }
+      pdf.setFont("Times", "normal"); pdf.setFontSize(12);
+      pdf.text(`Section: ${e.section}`, marginX, y); y += lineH;
+      pdf.text(`Mood: ${e.mood}/10  |  ${e.sentiment}`, marginX, y); y += lineH;
+
+      pdf.setFont("Times", "bold");
+      pdf.text(`Q: ${e.question}`, marginX, y); y += lineH;
+
+      pdf.setFont("Times", "normal");
+      const lines = pdf.splitTextToSize(e.entry || "", 520);
+      pdf.text(lines, marginX, y);
+      y += lines.length * lineH + 12;
     }
+
     pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0, 10)}.pdf`);
-  };
+  }
 
-  // Drive -> local merge (kept)
-  const handleRestore = (restored) => {
-    if (!restored?.entries) return;
-    const incoming = restored.entries;
-    const map = new Map(entries.map((e) => [e.id, e]));
-    for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
-    const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
-    setEntries(merged);
-  };
-
-  // -------- Past Entries: horizontal pages --------
-  const pages = useMemo(() => {
-    const grouped = groupByDate(entries);
-    // newest date first
-    const ordered = Object.keys(grouped)
-      .sort((a, b) => new Date(b) - new Date(a))
-      .map((d) => ({ dateKey: d, items: grouped[d] }));
-    return ordered;
-  }, [entries]);
-
-  const scrollerRef = useRef(null);
-  const pageRefs = useRef({}); // key -> ref
-  const [pageIndex, setPageIndex] = useState(0);
-  useEffect(() => {
-    // snap to first page on entering tab
-    if (view === "past" && pages.length && scrollerRef.current) {
-      const k = pages[pageIndex]?.dateKey;
-      if (k && pageRefs.current[k]) {
-        pageRefs.current[k].scrollIntoView({ behavior: "instant", inline: "start" });
-      }
-    }
-  }, [view]); // eslint-disable-line
-
-  const gotoPage = (i) => {
-    if (!pages.length) return;
-    const clamped = Math.max(0, Math.min(pages.length - 1, i));
-    setPageIndex(clamped);
-    const k = pages[clamped].dateKey;
-    pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
-  };
-
+  /* Render */
   return (
-    <div
-      className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${
-        dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
-      }`}
-    >
-      <header className="flex justify-between items-center mb-1">
+    <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+      {/* Welcome Overlay */}
+      <WelcomeModal
+        open={showWelcome}
+        onClose={() => {
+          setShowWelcome(false);
+          localStorage.setItem(WELCOME_KEY, "1");
+        }}
+        onStart={() => {
+          setShowWelcome(false);
+          localStorage.setItem(WELCOME_KEY, "1");
+          setView("journal");
+        }}
+      />
+
+      {/* Header */}
+      <header className="flex justify-between items-center mb-2">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
         <Button
           variant="outline"
           onClick={() => {
             const next = !dark;
             setDark(next);
-            localStorage.setItem("gj_theme", next ? "dark" : "light");
+            localStorage.setItem(THEME_KEY, next ? "dark" : "light");
           }}
         >
           {dark ? "☀️ Light" : "🌙 Dark"}
         </Button>
       </header>
-
-      <p className="text-center text-gray-500">
-        Save short reflections daily. Track mood & insights weekly.
-      </p>
-      <p className="italic text-center text-green-600 mb-4">“{quote}”</p>
+      <p className="text-center text-gray-500 mb-4 italic">“{quote}”</p>
 
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
-        <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>
-          ✍️ Journal
-        </Button>
-        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>
-          🕊 Past Entries
-        </Button>
-        <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>
-          📊 Summary
-        </Button>
+        <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>✍️ Journal</Button>
+        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>🕊 Past Entries</Button>
+        <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>📊 Summary</Button>
       </div>
 
       {/* JOURNAL */}
@@ -355,10 +447,7 @@ export default function App() {
           <CardContent className="space-y-4">
             <Select
               value={section}
-              onChange={(v) => {
-                setSection(v);
-                setQuestion("");
-              }}
+              onChange={(v) => { setSection(v); setQuestion(""); }}
               options={Object.keys(sections)}
             />
             <Select
@@ -375,10 +464,8 @@ export default function App() {
                   onChange={(e) => setEntry(e.target.value)}
                 />
                 <div>
-                  <p className="text-sm">
-                    Mood: {mood}/10 ({moodLabel(mood)})
-                  </p>
-                  <Slider min={1} max={10} step={1} value={[mood]} onChange={(v) => setMood(v[0])} />
+                  <p className="text-sm">Mood: {mood}/10 ({moodLabel(mood)})</p>
+                  <Slider min={1} max={10} value={[mood]} onChange={(v) => setMood(v[0])} />
                 </div>
                 <Button onClick={handleSave}>Save Entry</Button>
               </>
@@ -387,69 +474,69 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST — horizontal pages with parchment */}
+      {/* PAST */}
       {view === "past" && (
-        <div className="space-y-3">
-          {pages.length === 0 ? (
-            <Card><CardContent>No entries yet.</CardContent></Card>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-500">
-                  Page {pageIndex + 1} / {pages.length}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => gotoPage(pageIndex - 1)}>⬅️ Prev</Button>
-                  <Button variant="outline" onClick={() => gotoPage(pageIndex + 1)}>Next ➡️</Button>
-                  <Button onClick={exportJournalPDF}>📘 Export PDF</Button>
-                  <Button variant="outline" onClick={exportTxt}>Export TXT</Button>
-                  <Button variant="outline" onClick={exportCsv}>Export CSV</Button>
-                </div>
-              </div>
-
-              <div
-                ref={scrollerRef}
-                className={`journal-swiper ${dark ? "" : "parchment-bg"}`}
-              >
-                {pages.map(({ dateKey, items }) => (
-                  <section
-                    key={dateKey}
-                    ref={(el) => (pageRefs.current[dateKey] = el)}
-                    className="journal-page"
-                  >
-                    <div className="journal-page-inner">
-                      <h3 className="journal-date">{dateKey}</h3>
-                      <div className="space-y-4">
-                        {items.map((e) => (
-                          <div key={e.id} className="journal-entry">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="text-xs text-gray-500">
-                                  {new Date(e.iso || e.date).toLocaleTimeString()} — {e.section}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
-                                <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
-                              </div>
-                            </div>
-                            <p className="mt-2 font-medium">{e.question}</p>
-                            <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
-                          </div>
-                        ))}
+        <div className="space-y-4">
+          <Card>
+            <CardContent>
+              <h3 className="font-semibold mb-2">Recent entries</h3>
+              {recent3.length === 0 ? (
+                <p className="text-sm text-gray-500">No entries yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recent3.map((e) => (
+                    <div key={e.id} className="flex justify-between border p-2 rounded">
+                      <div>
+                        <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
+                        <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
+                        <div className="text-sm font-medium">{e.question}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                        <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
                       </div>
                     </div>
-                  </section>
-                ))}
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <h3 className="font-semibold mb-2">All entries (latest first)</h3>
+              {pastSorted.length === 0 ? (
+                <p className="text-sm text-gray-500">No entries yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {pastSorted.map((e) => (
+                    <div key={e.id} className="rounded-lg border p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                        <div>
+                          <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
+                          <div className="text-sm text-gray-600">
+                            Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                          </div>
+                          <div className="mt-1 font-medium">{e.question}</div>
+                          <div className="mt-1 whitespace-pre-wrap text-sm">{e.entry}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
+                          <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+                <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+                <Button onClick={exportPdf}>Export .PDF</Button>
               </div>
-              <div className="text-center text-xs text-gray-500">
-                Tip: swipe horizontally (trackpad / touch) to flip pages.
-              </div>
-            </>
-          )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -457,12 +544,11 @@ export default function App() {
       {view === "summary" && (
         <Card>
           <CardContent className="space-y-4">
-            <h2 className="text-2xl font-semibold">Weekly Summary</h2>
-            <SummaryPanel entries={entries} darkMode={dark} onExportPDF={exportJournalPDF} />
-            <div className="flex gap-2">
+            <SummaryPanel entries={entries} darkMode={dark} />
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
               <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
-              <Button onClick={exportJournalPDF}>Export .PDF</Button>
+              <Button onClick={exportPdf}>Export .PDF</Button>
             </div>
           </CardContent>
         </Card>
@@ -486,24 +572,15 @@ export default function App() {
         </div>
       )}
 
-      {/* Drive Sync + Install */}
+      {/* Footer */}
       <div className="flex justify-between items-center mt-8">
-        <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
+        <div className="text-sm text-gray-500">💾 Auto-synced locally</div>
         <InstallPrompt />
       </div>
       <div className="text-center mt-3">
-        <GoogleSync dataToSync={{ entries }} onRestore={handleRestore} />
+        {/* GoogleSync will try silent Drive restore and call handleRestoreFromDrive when available */}
+        <GoogleSync dataToSync={{ entries }} onRestore={handleRestoreFromDrive} />
       </div>
     </div>
   );
-}
-
-// ------- helpers -------
-function groupByDate(list) {
-  const out = {};
-  for (const e of list) {
-    const key = toDateKey(e.iso || e.date);
-    (out[key] ||= []).push(e);
-  }
-  return out;
 }

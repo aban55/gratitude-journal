@@ -106,10 +106,12 @@ export default function GoogleSync({ dataToSync, onRestore }) {
     if (backupFileIdRef.current) return backupFileIdRef.current;
 
     try {
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_NAME}' and trashed=false&spaces=drive&fields=files(id,name,modifiedTime)`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
+      const query = encodeURIComponent(`name='${BACKUP_NAME}' and trashed=false`);
+const res = await fetch(
+  `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive&fields=files(id,name,modifiedTime)`,
+  { headers: { Authorization: `Bearer ${accessToken}` } }
+);
+
 
       // Refresh on token expiry
       if (res.status === 401 && tokenClientRef.current) {

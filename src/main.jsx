@@ -16,18 +16,19 @@ if (import.meta?.env?.PROD && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("/service-worker.js").then((registration) => {
       console.log("Service Worker registered:", registration);
 
-      // Handle the 'beforeinstallprompt' event
       let deferredPrompt;
-      window.addEventListener("beforeinstallprompt", (e) => {
-        e.preventDefault(); // Prevent the default prompt
-        deferredPrompt = e; // Save the event so it can be triggered later
 
-        // Show a custom install button or banner
+      // Listen for the 'beforeinstallprompt' event
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();  // Prevent the default prompt
+        deferredPrompt = e; // Save the event for later
+
+        // Show the install button
         const installButton = document.getElementById("install-btn");
         if (installButton) {
           installButton.style.display = "block"; // Show the button
           installButton.addEventListener("click", () => {
-            deferredPrompt.prompt();
+            deferredPrompt.prompt(); // Show the install prompt
             deferredPrompt.userChoice.then((result) => {
               if (result.outcome === "accepted") {
                 console.log("User accepted the A2HS prompt");
@@ -40,7 +41,7 @@ if (import.meta?.env?.PROD && "serviceWorker" in navigator) {
         }
       });
 
-      // Listen for 'message' events from service worker
+      // Listen for 'message' events from the service worker
       navigator.serviceWorker.addEventListener("message", (e) => {
         if (e.data?.type === "DO_PAGE_UPLOAD") {
           window.dispatchEvent(new CustomEvent("gj-sync-request"));

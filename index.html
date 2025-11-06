@@ -1,19 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gratitude Journal</title>
 
+    <!-- ✅ PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.png" />
-    <!-- PWA color -->
-    <meta name="theme-color" content="#16a34a" />
 
-    <!-- Google API loader -->
+    <!-- ✅ Google API Loader -->
     <script src="https://apis.google.com/js/api.js"></script>
+
+    <!-- ✅ Basic Analytics Helper -->
+    <script src="/analytics.js" defer></script>
+
+    <!-- Style hint -->
+    <meta name="theme-color" content="#16a34a" />
   </head>
-  <body class="bg-gray-50">
+
+  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

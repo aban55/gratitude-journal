@@ -40,3 +40,19 @@
 .read-the-docs {
   color: #888;
 }
+
+/* App.css */
+
+.app-fade {
+  animation: app-fade-in 280ms ease-out both;
+}
+@keyframes app-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card-hover:hover {
+  box-shadow: 0 10px 24px -8px rgba(0,0,0,.15);
+  transform: translateY(-1px);
+  transition: all 180ms ease;
+}

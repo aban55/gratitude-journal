@@ -19,7 +19,7 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-/* ---- Sections & prompts ---- */
+/* ---- Sections ---- */
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -38,7 +38,6 @@ const sections = {
     "What detail in nature stood out today?",
     "What moment felt peaceful or quiet?",
     "What simple pleasure grounded me today?",
-    "What modern convenience or tool makes life smoother?",
   ],
   "Work & Purpose": [
     "What part of my work felt meaningful?",
@@ -56,48 +55,48 @@ const sections = {
     "How does my body show gratitude when I care for it?",
     "What signs of recovery or strength am I noticing lately?",
   ],
-};
+];
 
 /* ---- Helpers ---- */
+function parseDate(src) {
+  if (!src) return null;
+  const d = new Date(src);
+  if (!isNaN(d)) return d;
+  const parts = src.split(/[\s,/-]+/).map(Number);
+  if (parts.length >= 3) {
+    const [a, b, c] = parts;
+    const y = c > 31 ? c : parts[2];
+    const m = a > 12 ? b - 1 : a - 1;
+    const day = a > 12 ? a : b;
+    return new Date(y, m, day);
+  }
+  return null;
+}
 const toDateKey = (d) => {
-  const x = new Date(d);
-  if (isNaN(x)) return null;
+  const x = d instanceof Date ? d : parseDate(d);
+  if (!x || isNaN(x)) return null;
   const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
-  return y.toISOString().slice(0, 10); // YYYY-MM-DD
+  return y.toISOString().slice(0, 10);
 };
 const fmtDate = (iso) => new Date(iso).toLocaleDateString();
 
 function moodLabel(m) {
-  if (m <= 3) return "😞 Sad / Low";
+  if (m <= 3) return "😞 Low";
   if (m <= 6) return "😐 Neutral";
   if (m <= 8) return "🙂 Positive";
   return "😄 Uplifted";
-}
-function analyzeSentiment(text, mood) {
-  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful", "peace"];
-  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
-  let s = 0;
-  const t = (text || "").toLowerCase();
-  pos.forEach((w) => t.includes(w) && (s += 1));
-  neg.forEach((w) => t.includes(w) && (s -= 1));
-  if (mood >= 7) s += 1;
-  if (mood <= 3) s -= 1;
-  if (s > 1) return "😊 Positive";
-  if (s === 1) return "🙂 Content";
-  if (s === 0) return "😐 Neutral";
-  return "😟 Stressed";
 }
 function moodToColor(mood) {
   if (mood == null) return "#f3f4f6";
   const t = Math.max(0, Math.min(10, mood)) / 10;
   let from, to, p;
   if (t < 0.5) {
-    from = [239, 68, 68]; // red-500
-    to = [245, 158, 11]; // amber-500
+    from = [239, 68, 68]; // red
+    to = [245, 158, 11]; // amber
     p = t / 0.5;
   } else {
     from = [245, 158, 11];
-    to = [22, 163, 74]; // green-600
+    to = [22, 163, 74]; // green
     p = (t - 0.5) / 0.5;
   }
   const c = from.map((f, i) => Math.round(f + (to[i] - f) * p));
@@ -106,21 +105,20 @@ function moodToColor(mood) {
 function freqToColor(count) {
   if (!count) return "#f3f4f6";
   const capped = Math.min(count, 5);
-  const t = capped / 5; // normalize
-  const from = [191, 219, 254]; // blue-200
-  const to = [30, 64, 175]; // blue-800
+  const t = capped / 5;
+  const from = [191, 219, 254];
+  const to = [30, 64, 175];
   const c = from.map((f, i) => Math.round(f + (to[i] - f) * t));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-/* ===== App ===== */
+/* ---- Main App ---- */
 export default function App() {
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
+  const [heatmapMode, setHeatmapMode] = useState("mood");
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
-  const [heatmapMode, setHeatmapMode] = useState("mood"); // "mood" | "freq"
 
-  // journal inputs
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
@@ -132,7 +130,7 @@ export default function App() {
   const [editMood, setEditMood] = useState(5);
   const [selectedDayKey, setSelectedDayKey] = useState(null);
 
-  /* Load/persist theme & entries */
+  /* ---- Load & Persist ---- */
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
@@ -143,7 +141,7 @@ export default function App() {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
 
-  /* Save new entry */
+  /* ---- Add Entry ---- */
   const handleSave = () => {
     if (!entry.trim() || !question) return;
     const now = new Date();
@@ -155,7 +153,6 @@ export default function App() {
       question,
       entry,
       mood,
-      sentiment: analyzeSentiment(entry, mood),
     };
     setEntries((prev) => [...prev, e]);
     setEntry("");
@@ -163,24 +160,27 @@ export default function App() {
     setMood(5);
     setSelectedDayKey(toDateKey(e.iso));
   };
-
   const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
-  const openEdit = (item) => { setEditing(item); setEditText(item.entry); setEditMood(item.mood); };
+  const openEdit = (item) => {
+    setEditing(item);
+    setEditText(item.entry);
+    setEditMood(item.mood);
+  };
   const saveEdit = () => {
     if (!editing) return;
-    const sentiment = analyzeSentiment(editText, editMood);
     setEntries((arr) =>
-      arr.map((e) => (e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment } : e))
+      arr.map((e) =>
+        e.id === editing.id ? { ...e, entry: editText, mood: editMood } : e
+      )
     );
     setEditing(null);
   };
 
-  /* ---- Stats for matrix ---- */
+  /* ---- Grouped Stats ---- */
   const byDay = useMemo(() => {
     const m = new Map();
     for (const e of entries) {
-      let d = new Date(e.iso || e.date);
-      if (isNaN(d)) continue;
+      const d = parseDate(e.iso || e.date);
       const k = toDateKey(d);
       if (!k) continue;
       if (!m.has(k)) m.set(k, []);
@@ -190,36 +190,69 @@ export default function App() {
   }, [entries]);
 
   const { weeks, monthLabels } = useMemo(() => buildYearMatrix(byDay), [byDay]);
-  const recent3 = useMemo(() => [...entries].sort((a, b) => new Date(b.iso) - new Date(a.iso)).slice(0, 3), [entries]);
-  const dayEntries = useMemo(() => byDay.get(selectedDayKey) || [], [byDay, selectedDayKey]);
+  const recent3 = useMemo(
+    () =>
+      [...entries]
+        .sort((a, b) => new Date(b.iso) - new Date(a.iso))
+        .slice(0, 3),
+    [entries]
+  );
+  const dayEntries = useMemo(
+    () => byDay.get(selectedDayKey) || [],
+    [byDay, selectedDayKey]
+  );
 
-  /* ---------- UI ---------- */
+  /* ---- UI ---- */
   return (
-    <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+    <div
+      className={`min-h-screen p-6 max-w-3xl mx-auto ${
+        dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
+      }`}
+    >
       <header className="flex justify-between items-center mb-1">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button variant="outline" onClick={() => {
-          const next = !dark;
-          setDark(next);
-          localStorage.setItem("gj_theme", next ? "dark" : "light");
-        }}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const next = !dark;
+            setDark(next);
+            localStorage.setItem("gj_theme", next ? "dark" : "light");
+          }}
+        >
           {dark ? "☀️ Light" : "🌙 Dark"}
         </Button>
       </header>
 
-      <p className="text-center text-gray-500">Save short reflections daily. Track mood & insights weekly.</p>
+      <p className="text-center text-gray-500">
+        Save short reflections daily. Track mood & insights weekly.
+      </p>
       <p className="italic text-center text-green-600 mb-4">“{quote}”</p>
 
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
-        <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>✍️ Journal</Button>
-        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>🕊 Past Entries</Button>
-        <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>📊 Summary</Button>
+        <Button
+          variant={view === "journal" ? "default" : "outline"}
+          onClick={() => setView("journal")}
+        >
+          ✍️ Journal
+        </Button>
+        <Button
+          variant={view === "past" ? "default" : "outline"}
+          onClick={() => setView("past")}
+        >
+          🕊 Past Entries
+        </Button>
+        <Button
+          variant={view === "summary" ? "default" : "outline"}
+          onClick={() => setView("summary")}
+        >
+          📊 Summary
+        </Button>
       </div>
 
+      {/* ===== Past Entries Tab ===== */}
       {view === "past" && (
         <div className="space-y-4">
-          {/* Recent */}
           <Card>
             <CardContent>
               <h3 className="font-semibold mb-2">Recent</h3>
@@ -228,16 +261,32 @@ export default function App() {
               ) : (
                 <div className="space-y-2">
                   {recent3.map((e) => (
-                    <div key={e.id} className="flex justify-between border rounded-lg p-2">
+                    <div
+                      key={e.id}
+                      className="flex justify-between border rounded-lg p-2"
+                    >
                       <div>
-                        <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
-                        <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
+                        <div className="text-xs text-gray-500">
+                          {fmtDate(e.iso || e.date)} — {e.section}
+                        </div>
+                        <div className="text-sm">
+                          Mood {e.mood}/10 ({moodLabel(e.mood)})
+                        </div>
                         <div className="text-sm font-medium">{e.question}</div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setSelectedDayKey(toDateKey(e.iso))}>Open</Button>
-                        <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
-                        <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedDayKey(toDateKey(e.iso))}
+                        >
+                          Open
+                        </Button>
+                        <Button variant="outline" onClick={() => openEdit(e)}>
+                          Edit
+                        </Button>
+                        <Button variant="outline" onClick={() => handleDelete(e.id)}>
+                          Delete
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -246,13 +295,21 @@ export default function App() {
             </CardContent>
           </Card>
 
-          {/* Matrix */}
+          {/* Rolling Matrix */}
           <div className="rounded-xl border p-3">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">Rolling 12-month Journal Matrix</h3>
+              <h3 className="font-semibold">Rolling 12-Month Journal Matrix</h3>
               <div className="flex items-center gap-3 text-sm">
-                <span>{heatmapMode === "mood" ? "🎨 Mood" : "📅 Frequency"}</span>
-                <Button variant="outline" size="sm" onClick={() => setHeatmapMode(heatmapMode === "mood" ? "freq" : "mood")}>
+                <span>
+                  {heatmapMode === "mood" ? "🎨 Mood" : "📅 Frequency"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setHeatmapMode(heatmapMode === "mood" ? "freq" : "mood")
+                  }
+                >
                   Toggle
                 </Button>
               </div>
@@ -267,17 +324,22 @@ export default function App() {
                       heatmapMode === "mood"
                         ? moodToColor(stat?.avgMood)
                         : freqToColor(stat?.count);
-                    const title = `${cell.label}\n${
-                      stat
-                        ? `${stat.count} entr${stat.count > 1 ? "ies" : "y"}, avg mood ${stat.avgMood?.toFixed(1) || "-"}`
-                        : "No entry"
-                    }`;
                     return (
                       <button
                         key={cell.key}
-                        className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""}`}
+                        className={`year-cell ${
+                          cell.key === selectedDayKey
+                            ? "year-cell-selected"
+                            : ""
+                        }`}
                         style={{ background: color }}
-                        title={title}
+                        title={
+                          stat
+                            ? `${cell.label}: ${stat.count} entr${
+                                stat.count > 1 ? "ies" : "y"
+                              }, avg mood ${stat.avgMood?.toFixed(1) || "-"}`
+                            : `${cell.label}: No entry`
+                        }
                         onClick={() => setSelectedDayKey(cell.key)}
                       />
                     );
@@ -288,8 +350,29 @@ export default function App() {
 
             <div className="year-month-labels">
               {monthLabels.map((m) => (
-                <span key={m.key} style={{ transform: `translateX(${m.offsetPx}px)` }}>{m.label}</span>
+                <span
+                  key={m.key}
+                  style={{ transform: `translateX(${m.offsetPx}px)` }}
+                >
+                  {m.label}
+                </span>
               ))}
+            </div>
+
+            {/* Legend */}
+            <div className="year-legend mt-2">
+              {heatmapMode === "mood" ? (
+                <>
+                  <span className="box low"></span>Low
+                  <span className="box mid"></span>Neutral
+                  <span className="box high"></span>Positive
+                </>
+              ) : (
+                <>
+                  <span className="box freq1"></span>Few
+                  <span className="box freq5"></span>Many
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -299,13 +382,25 @@ export default function App() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl w-[90%] max-w-md space-y-4">
             <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
-            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
+            <Textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+            />
             <div>
-              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
-              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
+              <p className="text-sm">
+                Mood: {editMood}/10 ({moodLabel(editMood)})
+              </p>
+              <Slider
+                min={1}
+                max={10}
+                value={[editMood]}
+                onChange={(v) => setEditMood(v[0])}
+              />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
               <Button onClick={saveEdit}>Save</Button>
             </div>
           </div>
@@ -313,9 +408,12 @@ export default function App() {
       )}
 
       <div className="flex justify-between items-center mt-8">
-        <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
+        <div className="text-sm text-gray-500">
+          💾 Auto-synced to browser storage
+        </div>
         <InstallPrompt />
       </div>
+
       <div className="text-center mt-3">
         <GoogleSync dataToSync={{ entries }} />
       </div>
@@ -323,42 +421,61 @@ export default function App() {
   );
 }
 
-/* ===== Year matrix builder ===== */
+/* ===== Matrix Builder ===== */
 function buildYearMatrix(dayMap) {
-  const end = new Date();
-  const endKey = toDateKey(end);
-  const endDate = new Date(endKey);
-
-  const start = new Date(endDate);
-  start.setDate(start.getDate() - 7 * 52 + 1);
-  const shift = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - shift);
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 364);
+  const day = startDate.getDay();
+  startDate.setDate(startDate.getDate() - ((day + 6) % 7));
 
   const weeks = [];
   const monthAnchors = [];
-  let cur = new Date(start);
+  const cur = new Date(startDate);
 
   for (let w = 0; w < 52; w++) {
     const column = [];
     for (let d = 0; d < 7; d++) {
       const key = toDateKey(cur);
-      const label = cur.toLocaleDateString();
-      const items = dayMap.get(key) || [];
-      const stat = items.length
-        ? { count: items.length, avgMood: items.reduce((a, e) => a + (e.mood || 0), 0) / items.length }
-        : null;
+      const label = cur.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      });
+      const items = key && dayMap.has(key) ? dayMap.get(key) : [];
+      const stat =
+        items.length > 0
+          ? {
+              count: items.length,
+              avgMood:
+                items.reduce((a, e) => a + (e.mood ?? 0), 0) / items.length,
+            }
+          : null;
       column.push({ key, label, stat });
-      if (cur.getDate() === 1) monthAnchors.push({ key, date: new Date(cur), col: w });
+      if (cur.getDate() === 1)
+        monthAnchors.push({ key, date: new Date(cur), col: w });
       cur.setDate(cur.getDate() + 1);
     }
     weeks.push(column);
   }
 
-  const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const MONTHS = [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ];
   const monthLabels = monthAnchors.map((a) => ({
     key: a.key,
     label: MONTHS[a.date.getMonth()],
-    offsetPx: a.col * 15,
+    offsetPx: a.col * 16,
   }));
 
   return { weeks, monthLabels };

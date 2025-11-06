@@ -128,39 +128,97 @@ function triggerDownload(blob, name) {
    Welcome Modal Component
 ========================= */
 function WelcomeModal({ open, onClose, onStart }) {
+  const [showAbout, setShowAbout] = useState(false);
+
   if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-50">
-      {/* Soft dark fade */}
-      <div className="absolute inset-0 bg-black/50" />
-      {/* Centered parchment card */}
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full rounded-2xl shadow-2xl parchment-bg border border-amber-200/70">
-          <div className="p-6 sm:p-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-amber-900 mb-2">
-              🌿 Welcome to Your Gratitude Journal
-            </h2>
-            <p className="text-amber-900/90 leading-relaxed">
-              Practising gratitude trains your mind to notice what’s going right. Even a few lines a day can improve mood,
-              reduce stress, and build resilience. This app keeps your daily reflections simple and meaningful—so it’s easy to stay consistent.
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn"
+      style={{ animationDuration: "0.4s" }}
+    >
+      <div className="max-w-2xl w-[90%] sm:w-[600px] bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl border border-amber-300 p-8 relative parchment-bg">
+        <h2 className="text-3xl font-bold mb-3 flex items-center gap-2">
+          🌿 Welcome to Your Gratitude Journal
+        </h2>
+
+        {!showAbout ? (
+          <>
+            <p className="leading-relaxed text-[15px]">
+              Practising gratitude trains your mind to notice what’s going right.
+              Even a few lines a day can improve mood, reduce stress, and build resilience.
+              This app keeps your reflections simple and meaningful — so it’s easy to stay consistent.
             </p>
 
             <div className="mt-6">
-              <h3 className="font-semibold text-amber-900 mb-2">How it works</h3>
-              <ul className="list-disc pl-5 space-y-1 text-amber-900/90">
-                <li>Select a prompt that resonates.</li>
+              <h3 className="font-semibold text-lg mb-2 text-amber-900">✨ How it works</h3>
+              <ul className="list-disc pl-6 space-y-1 text-[15px]">
+                <li>Select a prompt that resonates with you.</li>
                 <li>Write a short reflection and set your mood (1–10).</li>
-                <li>Entries are saved automatically—locally and (if signed in) to Google Drive.</li>
-                <li>Review and edit past entries anytime; export TXT/CSV/PDF from the Past or Summary tabs.</li>
+                <li>Your entries save automatically — locally and to Drive if you’re signed in.</li>
+                <li>Review, edit, and export your reflections anytime from <i>Past Entries</i> or <i>Summary</i>.</li>
               </ul>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2 justify-end">
-              <Button variant="outline" onClick={onClose}>Maybe Later</Button>
-              <Button onClick={onStart}>Get Started</Button>
+            <div className="mt-8 flex flex-wrap justify-between items-center gap-3">
+              <button
+                onClick={() => setShowAbout(true)}
+                className="text-sm text-amber-700 underline hover:text-amber-900"
+              >
+                🪷 About Gratitude
+              </button>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+                >
+                  Maybe Later
+                </Button>
+                <Button
+                  onClick={onStart}
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-6"
+                >
+                  Get Started
+                </Button>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            <h3 className="text-xl font-semibold mb-2 text-amber-900">🪷 The Power of Gratitude</h3>
+            <p className="leading-relaxed text-[15px] mb-4">
+              Gratitude is more than a feeling — it’s a practice that reshapes how your mind
+              interprets the world. Studies show that keeping a daily gratitude journal:
+            </p>
+            <ul className="list-disc pl-6 space-y-1 text-[15px]">
+              <li>Boosts emotional resilience and reduces anxiety.</li>
+              <li>Improves sleep and focus by reducing negative rumination.</li>
+              <li>Strengthens relationships by increasing empathy and patience.</li>
+              <li>Helps train the brain to spot positive patterns instead of stress triggers.</li>
+            </ul>
+            <p className="mt-4 text-[15px]">
+              Even a few lines a day act like small mental workouts — over time, they grow into a calm,
+              grounded, and grateful perspective.
+            </p>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowAbout(false)}
+                className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={onStart}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-6"
+              >
+                Start Journaling
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

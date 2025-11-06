@@ -243,28 +243,27 @@ function WelcomeModal({
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={reminderEnabled}
-                    onChange={(e) => onReminderEnabled(e.target.checked)}
-                  />
-                  <span className="text-[15px]">Daily Reminder</span>
-                </label>
+  <select
+    value={reminderTime}
+    onChange={(e) => onReminderTime(e.target.value)}
+    className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
+  >
+    <option value="07:00">7:00 AM</option>
+    <option value="12:00">12:00 PM</option>
+    <option value="20:00">8:00 PM</option>
+    <option value="21:00">9:00 PM</option>
+    <option value="22:00">10:00 PM</option>
+  </select>
 
-                <select
-                  value={reminderTime}
-                  onChange={(e) => onReminderTime(e.target.value)}
-                  className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
-                  disabled={!reminderEnabled}
-                >
-                  <option value="07:00">7:00 AM</option>
-                  <option value="12:00">12:00 PM</option>
-                  <option value="20:00">8:00 PM</option>
-                  <option value="21:00">9:00 PM</option>
-                  <option value="22:00">10:00 PM</option>
-                </select>
-              </div>
+  <label className="flex items-center gap-2 cursor-pointer">
+    <input
+      type="checkbox"
+      checked={reminderEnabled}
+      onChange={(e) => onReminderEnabled(e.target.checked)}
+    />
+    <span className="text-[15px]">Enable Daily Reminder</span>
+  </label>
+</div>
 
               <p className="mt-2 text-[13px] text-amber-700">
                 You’ll get a gentle nudge at your chosen time. If notifications are blocked, a small in-app alert appears instead.

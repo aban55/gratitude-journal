@@ -197,7 +197,7 @@ function Toast({ message, onClose }) {
 }
 
 /* =========================
-   Feedback Modal
+   Feedback Modal (Fixed)
 ========================= */
 function FeedbackModal({ open, onClose, onSubmit }) {
   const [rating, setRating] = useState(0);
@@ -215,22 +215,31 @@ function FeedbackModal({ open, onClose, onSubmit }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center">
-      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
-        <h3 className="text-xl font-semibold mb-2">Share quick feedback</h3>
+    <div
+      className="fixed inset-0 z-[2000] bg-black/50 flex items-center justify-center"
+      onClick={(e) => {
+        // click outside closes modal
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[92%] max-w-md p-5 animate-fadeIn">
+        <h3 className="text-xl font-semibold mb-2">💬 Share quick feedback</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Your journal stays on your device. Feedback is sent separately and never includes your entries.
         </p>
 
-        <div className="mb-3">
-          <label className="text-sm font-medium">Overall</label>
-          <div className="flex gap-2 mt-2">
+        {/* Emoji rating row */}
+        <div className="mb-4">
+          <label className="text-sm font-medium">Overall experience</label>
+          <div className="flex gap-2 mt-2 justify-center">
             {emojis.map((e) => (
               <button
                 key={e.v}
                 onClick={() => setRating(e.v)}
-                className={`text-2xl rounded-md px-2 py-1 border ${
-                  rating === e.v ? "bg-amber-100 border-amber-300" : "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                className={`text-2xl rounded-md px-2 py-1 transition-all ${
+                  rating === e.v
+                    ? "bg-amber-100 border border-amber-300 scale-110"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
               >
                 {e.label}
@@ -239,10 +248,11 @@ function FeedbackModal({ open, onClose, onSubmit }) {
           </div>
         </div>
 
-        <div className="mb-3">
+        {/* Feedback category */}
+        <div className="mb-4">
           <label className="text-sm font-medium">Topic</label>
           <select
-            className="mt-1 w-full border rounded-md px-2 py-1 bg-white dark:bg-gray-800"
+            className="mt-1 w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-gray-800"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           >
@@ -254,7 +264,8 @@ function FeedbackModal({ open, onClose, onSubmit }) {
           </select>
         </div>
 
-        <div>
+        {/* Text area */}
+        <div className="mb-3">
           <label className="text-sm font-medium">Suggestions (optional)</label>
           <Textarea
             placeholder="What would make this better for you?"
@@ -263,12 +274,21 @@ function FeedbackModal({ open, onClose, onSubmit }) {
           />
         </div>
 
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+        {/* Actions */}
+        <div className="flex justify-end gap-2 mt-5">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="border border-gray-300 bg-white hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+          >
+            Cancel
+          </Button>
           <Button
             onClick={() => {
               onSubmit({ rating, category, message });
             }}
+            disabled={!rating && !message}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
           >
             Submit
           </Button>

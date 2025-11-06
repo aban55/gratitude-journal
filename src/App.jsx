@@ -22,8 +22,7 @@ const quotes = [
   "Peace begins the moment you choose gratitude.",
   "Joy grows in the soil of appreciation.",
   "The more grateful you are, the more beauty you see.",
-  "Each day is a new page to write your thanks."
-  "Joy grows in the soil of appreciation.",
+  "Each day is a new page to write your thanks.",
   "Every thankful thought plants a seed of joy.",
 ];
 
@@ -120,20 +119,20 @@ function affirmationFor(sentiment) {
 export default function App() {
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
-  const [quote, setQuote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+  const [quote, setQuote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
 
-  const [section, setSection] = useState(Object.keys(SECTIONS)[0]);
+  const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
   const [entries, setEntries] = useState([]);
 
-  // For modal editing
+  // Modal Editing
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  // --- Load ---
+  // Load
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
@@ -145,7 +144,7 @@ export default function App() {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
 
-  // --- Save entry ---
+  // Save entry
   const handleSave = () => {
     if (!entry.trim() || !question) return;
     const sentiment = analyzeSentiment(entry, mood);
@@ -164,10 +163,10 @@ export default function App() {
     setMood(5);
   };
 
-  // --- Delete ---
+  // Delete
   const handleDelete = (id) => setEntries(entries.filter((e) => e.id !== id));
 
-  // --- Modal Edit ---
+  // Modal edit
   const openEdit = (item) => {
     setEditing(item);
     setEditText(item.entry);
@@ -179,15 +178,13 @@ export default function App() {
     const sentiment = analyzeSentiment(editText, editMood);
     setEntries((arr) =>
       arr.map((e) =>
-        e.id === editing.id
-          ? { ...e, entry: editText, mood: editMood, sentiment }
-          : e
+        e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment } : e
       )
     );
     setEditing(null);
   };
 
-  // --- Export TXT ---
+  // Export TXT
   const exportTxt = () => {
     const content = entries
       .map(
@@ -202,7 +199,7 @@ export default function App() {
     link.click();
   };
 
-  // --- Export CSV ---
+  // Export CSV
   const exportCsv = () => {
     const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
     const rows = entries.map((e) => [
@@ -221,7 +218,7 @@ export default function App() {
     link.click();
   };
 
-  // --- Summary ---
+  // Summary
   const summary = useMemo(() => {
     if (!entries.length) return null;
     const last7 = entries.slice(-7);
@@ -270,12 +267,12 @@ export default function App() {
                 setSection(v);
                 setQuestion("");
               }}
-              options={Object.keys(SECTIONS)}
+              options={Object.keys(sections)}
             />
             <Select
               value={question}
               onChange={setQuestion}
-              options={["", ...SECTIONS[section]]}
+              options={["", ...sections[section]]}
               placeholder="Pick a question"
             />
             {question && (
@@ -303,7 +300,9 @@ export default function App() {
         <Card>
           <CardContent className="space-y-3">
             <h2 className="text-2xl font-semibold">Weekly Summary</h2>
-            <p>Average mood: <strong>{summary.avgMood}/10</strong></p>
+            <p>
+              Average mood: <strong>{summary.avgMood}/10</strong>
+            </p>
 
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={summary.trend}>
@@ -321,8 +320,12 @@ export default function App() {
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={exportTxt} variant="outline">Export .TXT</Button>
-              <Button onClick={exportCsv} variant="outline">Export .CSV</Button>
+              <Button onClick={exportTxt} variant="outline">
+                Export .TXT
+              </Button>
+              <Button onClick={exportCsv} variant="outline">
+                Export .CSV
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -333,7 +336,9 @@ export default function App() {
         <div className="mt-6 space-y-3">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold">🕊 Past Entries</h3>
-            <Button variant="outline" onClick={exportTxt}>Export All</Button>
+            <Button variant="outline" onClick={exportTxt}>
+              Export All
+            </Button>
           </div>
           {entries
             .slice()
@@ -351,8 +356,12 @@ export default function App() {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => openEdit(e)}>Edit</Button>
-                      <Button variant="outline" onClick={() => handleDelete(e.id)}>Delete</Button>
+                      <Button variant="outline" onClick={() => openEdit(e)}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" onClick={() => handleDelete(e.id)}>
+                        Delete
+                      </Button>
                     </div>
                   </div>
                   <p className="mt-2 font-medium">{e.question}</p>
@@ -370,7 +379,9 @@ export default function App() {
             <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
             <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
             <div>
-              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
+              <p className="text-sm">
+                Mood: {editMood}/10 ({moodLabel(editMood)})
+              </p>
               <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
             </div>
             <div className="flex justify-end gap-2">

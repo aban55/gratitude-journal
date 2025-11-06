@@ -58,7 +58,7 @@ const sections = {
   ],
 };
 
-// ---------- Helpers (unchanged spirit, safe) ----------
+// Helpers
 function moodLabel(mood) {
   if (mood <= 3) return "😞 Sad / Low";
   if (mood <= 6) return "😐 Neutral";
@@ -69,7 +69,7 @@ function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
   let s = 0;
-  const t = (text || "").toLowerCase();
+  const t = text.toLowerCase();
   pos.forEach((w) => t.includes(w) && (s += 1));
   neg.forEach((w) => t.includes(w) && (s -= 1));
   if (mood >= 7) s++;
@@ -79,117 +79,11 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
-/**
- * Your file already groups by calendar day via a *locale* string key.
- * Keep that to avoid changing storage. We’ll use the same for the matrix.
- */
 const toDateKey = (isoOrDate) => {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  const atMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  // locale key (same as your clean file)
-  return atMidnight.toLocaleDateString();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    .toLocaleDateString();
 };
-function fmtShort(isoOrDate) {
-  const d = new Date(isoOrDate);
-  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
-}
-/** Smooth red→amber→green scale for mood; gray for no data */
-function moodToColor(mood) {
-  if (mood == null) return "#f3f4f6";
-  const t = Math.max(0, Math.min(10, mood)) / 10;
-  let from, to, p;
-  if (t < 0.5) {
-    from = [239, 68, 68];  // red-500
-    to = [245, 158, 11];   // amber-500
-    p = t / 0.5;
-  } else {
-    from = [245, 158, 11]; // amber-500
-    to = [22, 163, 74];    // green-600
-    p = (t - 0.5) / 0.5;
-  }
-  const c = from.map((f, i) => Math.round(f + (to[i] - f) * p));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
-/** Frequency blue scale for alternative heatmap mode */
-function freqToColor(count) {
-  if (!count) return "#f3f4f6";
-  const capped = Math.min(count, 5) / 5; // cap at 5 entries/day
-  const start = [191, 219, 254]; // blue-200
-  const end = [30, 64, 175];     // blue-900
-  const mix = start.map((s, i) => Math.round(s + (end[i] - s) * capped));
-  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
-}
-function groupByDate(list) {
-  const out = {};
-  for (const e of list) {
-    const key = toDateKey(e.iso || e.date);
-    (out[key] ||= []).push(e);
-  }
-  return out;
-}
-
-// ---------- NEW: 12-month (52×7) matrix builder ----------
-function buildYearMatrix(byDayMap, mode = "mood") {
-  // end at today (normalized); start at 52 weeks earlier, then align to Monday
-  const today = new Date();
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const start = new Date(end);
-  start.setDate(start.getDate() - 7 * 52 + 1);
-  const shift = (start.getDay() + 6) % 7; // Mon=0
-  start.setDate(start.getDate() - shift);
-
-  const weeks = [];
-  const monthAnchors = [];
-  const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-
-  const cur = new Date(start);
-  for (let w = 0; w < 52; w++) {
-    const col = [];
-    for (let d = 0; d < 7; d++) {
-      const key = toDateKey(cur);
-      const items = byDayMap.get(key) || [];
-      const avgMood = items.length
-        ? items.reduce((a, e) => a + (e.mood || 0), 0) / items.length
-        : null;
-
-      const color =
-        items.length === 0
-          ? "#f3f4f6"
-          : mode === "frequency"
-          ? freqToColor(items.length)
-          : moodToColor(avgMood);
-
-      const title =
-        items.length === 0
-          ? `${cur.toLocaleDateString()}\nNo entries`
-          : `${cur.toLocaleDateString()}\n${items.length} entr${items.length === 1 ? "y" : "ies"}${
-              avgMood != null ? `, avg mood ${avgMood.toFixed(1)}` : ""
-            }`;
-
-      col.push({
-        key, color, title,
-        isToday:
-          cur.getFullYear() === end.getFullYear() &&
-          cur.getMonth() === end.getMonth() &&
-          cur.getDate() === end.getDate(),
-      });
-
-      if (cur.getDate() === 1) {
-        monthAnchors.push({ key, date: new Date(cur), col: w });
-      }
-      cur.setDate(cur.getDate() + 1);
-    }
-    weeks.push(col);
-  }
-
-  const monthLabels = monthAnchors.map((a) => ({
-    key: a.key,
-    label: MONTHS[a.date.getMonth()],
-    offsetPx: a.col * (13 + 2), // 13px cell + 2px gap (match your CSS)
-  }));
-
-  return { weeks, monthLabels };
-}
 
 export default function App() {
   const [view, setView] = useState("journal"); // journal | past | summary
@@ -209,9 +103,6 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
-
-  // NEW: heatmap mode toggle
-  const [heatmapMode, setHeatmapMode] = useState("mood"); // 'mood' | 'frequency'
 
   // Load local
   useEffect(() => {
@@ -302,7 +193,9 @@ export default function App() {
   };
   const exportJournalPDF = async () => {
     const pdf = new jsPDF("p", "pt", "a4");
-    const marginX = 40, marginY = 60, lineH = 20;
+    const marginX = 40,
+      marginY = 60,
+      lineH = 20;
     let y = marginY;
 
     pdf.setFont("Times", "normal");
@@ -359,7 +252,7 @@ export default function App() {
     setEntries(merged);
   };
 
-  // Past: pages (kept)
+  // -------- Past Entries: horizontal pages --------
   const pages = useMemo(() => {
     const grouped = groupByDate(entries);
     // newest date first
@@ -389,22 +282,6 @@ export default function App() {
     const k = pages[clamped].dateKey;
     pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
   };
-
-  // NEW: data map + matrix
-  const byDayMap = useMemo(() => {
-    const m = new Map();
-    for (const e of entries) {
-      const k = toDateKey(e.iso || e.date);
-      if (!k) continue;
-      if (!m.has(k)) m.set(k, []);
-      m.get(k).push(e);
-    }
-    return m;
-  }, [entries]);
-  const { weeks, monthLabels } = useMemo(
-    () => buildYearMatrix(byDayMap, heatmapMode),
-    [byDayMap, heatmapMode]
-  );
 
   return (
     <div
@@ -482,72 +359,9 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST — matrix + horizontal pages */}
+      {/* PAST — horizontal pages with parchment */}
       {view === "past" && (
-        <div className="space-y-4">
-          {/* NEW: Rolling 12-Month Matrix */}
-          <Card>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Rolling 12-Month Journal Matrix</h2>
-                <div className="flex items-center gap-2 text-sm">
-                  <span>Color by:</span>
-                  <Button
-                    variant={heatmapMode === "mood" ? "default" : "outline"}
-                    onClick={() => setHeatmapMode("mood")}
-                  >
-                    Mood
-                  </Button>
-                  <Button
-                    variant={heatmapMode === "frequency" ? "default" : "outline"}
-                    onClick={() => setHeatmapMode("frequency")}
-                  >
-                    Frequency
-                  </Button>
-                </div>
-              </div>
-
-              <div className="year-matrix">
-                {weeks.map((week, wi) => (
-                  <div key={wi} className="year-week">
-                    {week.map((cell, ci) => (
-                      <button
-                        key={`${wi}-${ci}-${cell.key}`}
-                        title={cell.title}
-                        className={`year-cell ${cell.isToday ? "year-today" : ""}`}
-                        style={{ background: cell.color }}
-                        onClick={() => {
-                          if (!cell.key) return;
-                          // scroll to that page if it exists
-                          const pagesIdx = pages.findIndex((p) => p.dateKey === cell.key);
-                          if (pagesIdx >= 0) gotoPage(pagesIdx);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-
-              <div className="year-month-labels">
-                {monthLabels.map((m) => (
-                  <span key={m.key} style={{ left: `${m.offsetPx}px` }}>
-                    {m.label}
-                  </span>
-                ))}
-              </div>
-
-              <div className="year-legend">
-                <span>Low</span>
-                <span className="box low" />
-                <span>Mid</span>
-                <span className="box mid" />
-                <span>High</span>
-                <span className="box high" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Horizontal journal pages (kept) */}
+        <div className="space-y-3">
           {pages.length === 0 ? (
             <Card><CardContent>No entries yet.</CardContent></Card>
           ) : (
@@ -654,4 +468,14 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+// ------- helpers -------
+function groupByDate(list) {
+  const out = {};
+  for (const e of list) {
+    const key = toDateKey(e.iso || e.date);
+    (out[key] ||= []).push(e);
+  }
+  return out;
 }

@@ -7,6 +7,7 @@ import { Slider } from "./ui/Slider.jsx";
 import GoogleSync from "./GoogleSync.jsx";
 import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
+import jsPDF from "jspdf";
 
 /* ---- Quotes ---- */
 const QUOTES = [
@@ -18,7 +19,7 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-/* ---- Sections ---- */
+/* ---- Sections & prompts ---- */
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -37,6 +38,7 @@ const sections = {
     "What detail in nature stood out today?",
     "What moment felt peaceful or quiet?",
     "What simple pleasure grounded me today?",
+    "What modern convenience or tool makes life smoother?",
   ],
   "Work & Purpose": [
     "What part of my work felt meaningful?",
@@ -57,93 +59,85 @@ const sections = {
 };
 
 /* ---- Helpers ---- */
-function parseDate(src) {
-  if (!src) return null;
-  const d = new Date(src);
-  if (!isNaN(d)) return d;
-  const parts = src.split(/[\s,/-]+/).map(Number);
-  if (parts.length >= 3) {
-    const [a, b, c] = parts;
-    const y = c > 31 ? c : parts[2];
-    const m = a > 12 ? b - 1 : a - 1;
-    const day = a > 12 ? a : b;
-    return new Date(y, m, day);
-  }
-  return null;
-}
-
 const toDateKey = (d) => {
-  const x = d instanceof Date ? d : parseDate(d);
-  if (!x || isNaN(x)) return null;
+  const x = new Date(d);
   const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
-  return y.toISOString().slice(0, 10);
+  return y.toISOString().slice(0, 10); // YYYY-MM-DD
 };
-
 const fmtDate = (iso) => new Date(iso).toLocaleDateString();
 
 function moodLabel(m) {
-  if (m <= 3) return "😞 Low";
+  if (m <= 3) return "😞 Sad / Low";
   if (m <= 6) return "😐 Neutral";
   if (m <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
-
+function analyzeSentiment(text, mood) {
+  const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful", "peace"];
+  const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
+  let s = 0;
+  const t = (text || "").toLowerCase();
+  pos.forEach((w) => t.includes(w) && (s += 1));
+  neg.forEach((w) => t.includes(w) && (s -= 1));
+  if (mood >= 7) s += 1;
+  if (mood <= 3) s -= 1;
+  if (s > 1) return "😊 Positive";
+  if (s === 1) return "🙂 Content";
+  if (s === 0) return "😐 Neutral";
+  return "😟 Stressed";
+}
 function moodToColor(mood) {
   if (mood == null) return "#f3f4f6";
   const t = Math.max(0, Math.min(10, mood)) / 10;
   let from, to, p;
   if (t < 0.5) {
-    from = [239, 68, 68];
-    to = [245, 158, 11];
+    from = [239, 68, 68]; // red-500
+    to = [245, 158, 11]; // amber-500
     p = t / 0.5;
   } else {
     from = [245, 158, 11];
-    to = [22, 163, 74];
+    to = [22, 163, 74]; // green-600
     p = (t - 0.5) / 0.5;
   }
   const c = from.map((f, i) => Math.round(f + (to[i] - f) * p));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-function freqToColor(count) {
-  if (!count) return "#f3f4f6";
-  const capped = Math.min(count, 5);
-  const t = capped / 5;
-  const from = [191, 219, 254];
-  const to = [30, 64, 175];
-  const c = from.map((f, i) => Math.round(f + (to[i] - f) * t));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
-
-/* ---- App Component ---- */
+/* ===== App ===== */
 export default function App() {
-  const [view, setView] = useState("journal");
+  const [view, setView] = useState("journal"); // journal | past | summary
   const [dark, setDark] = useState(false);
-  const [heatmapMode, setHeatmapMode] = useState("mood");
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+
+  // journal inputs
   const [section, setSection] = useState(Object.keys(sections)[0]);
   const [question, setQuestion] = useState("");
   const [entry, setEntry] = useState("");
   const [mood, setMood] = useState(5);
+
+  // data
   const [entries, setEntries] = useState([]);
+
+  // edit modal
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
+
+  // day selection for parchment view
   const [selectedDayKey, setSelectedDayKey] = useState(null);
 
-  /* ---- Load & Persist ---- */
+  /* Load/persist theme & entries */
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
-
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
 
-  /* ---- Add Entry ---- */
+  /* Save new entry */
   const handleSave = () => {
     if (!entry.trim() || !question) return;
     const now = new Date();
@@ -155,65 +149,135 @@ export default function App() {
       question,
       entry,
       mood,
+      sentiment: analyzeSentiment(entry, mood),
     };
     setEntries((prev) => [...prev, e]);
-    setEntry("");
-    setQuestion("");
-    setMood(5);
+    setEntry(""); setQuestion(""); setMood(5);
     setSelectedDayKey(toDateKey(e.iso));
   };
 
+  /* Delete / Edit */
   const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
-
-  const openEdit = (item) => {
-    setEditing(item);
-    setEditText(item.entry);
-    setEditMood(item.mood);
-  };
-
+  const openEdit = (item) => { setEditing(item); setEditText(item.entry); setEditMood(item.mood); };
   const saveEdit = () => {
     if (!editing) return;
-    setEntries((arr) =>
-      arr.map((e) =>
-        e.id === editing.id ? { ...e, entry: editText, mood: editMood } : e
-      )
-    );
+    const sentiment = analyzeSentiment(editText, editMood);
+    setEntries((arr) => arr.map((e) => (e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment } : e)));
     setEditing(null);
   };
 
-  /* ---- Grouped Stats ---- */
+  /* TXT / CSV / PDF exports */
+  const exportTxt = () => {
+    const content = entries
+      .map(
+        (e) =>
+          `${fmtDate(e.iso || e.date)}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
+      )
+      .join("\n----------------\n");
+    triggerDownload(new Blob([content], { type: "text/plain" }), "Gratitude_Journal.txt");
+  };
+  const exportCsv = () => {
+    const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
+    const rows = entries.map((e) => [
+      `"${fmtDate(e.iso || e.date)}"`,
+      `"${e.section}"`,
+      e.mood,
+      `"${e.sentiment}"`,
+      `"${e.question}"`,
+      `"${(e.entry || "").replace(/"/g, '""')}"`,
+    ]);
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    triggerDownload(new Blob([csv], { type: "text/csv" }), "Gratitude_Journal.csv");
+  };
+  const exportJournalPDF = () => {
+    const pdf = new jsPDF("p", "pt", "a4");
+    const pageH = pdf.internal.pageSize.height;
+    const marginX = 56, marginY = 64, lineH = 18;
+
+    // cover
+    pdf.setFont("Times", "bold"); pdf.setFontSize(22);
+    pdf.text("🌿 My Gratitude Journal", marginX, marginY);
+    pdf.setFont("Times", "normal"); pdf.setFontSize(12);
+    pdf.text(`Exported on ${new Date().toLocaleString()}`, marginX, marginY + 26);
+    pdf.text(`Total entries: ${entries.length}`, marginX, marginY + 44);
+    pdf.addPage();
+
+    // month-grouped
+    const byMonth = new Map();
+    const sorted = [...entries].sort((a, b) => new Date(a.iso) - new Date(b.iso));
+    for (const e of sorted) {
+      const d = new Date(e.iso || e.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!byMonth.has(key)) byMonth.set(key, []);
+      byMonth.get(key).push(e);
+    }
+    for (const [mon, list] of byMonth.entries()) {
+      let y = marginY;
+      pdf.setFont("Times", "bold"); pdf.setFontSize(16);
+      const title = new Date(`${mon}-01T00:00:00`).toLocaleString(undefined, { month: "long", year: "numeric" });
+      pdf.text(title, marginX, y); y += 24;
+      pdf.setFont("Times", "normal"); pdf.setFontSize(12);
+
+      for (const e of list) {
+        if (y > pageH - 120) { pdf.addPage(); y = marginY; }
+        pdf.setTextColor(34, 139, 34); pdf.text(fmtDate(e.iso || e.date), marginX, y); y += lineH;
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Section: ${e.section}`, marginX, y); y += lineH;
+        pdf.text(`Mood: ${e.mood}/10  |  ${e.sentiment}`, marginX, y); y += lineH;
+        pdf.setFont("Times", "bold"); pdf.text(`Q: ${e.question}`, marginX, y); y += lineH;
+        pdf.setFont("Times", "normal");
+        const lines = pdf.splitTextToSize(e.entry || "", 520);
+        pdf.text(lines, marginX, y); y += lines.length * lineH + 14;
+      }
+      pdf.addPage();
+    }
+    pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+  const triggerDownload = (blob, name) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  };
+
+  /* Drive -> local merge (kept; de-dup by id) */
+  const handleRestore = (restored) => {
+    if (!restored?.entries) return;
+    const map = new Map(entries.map((e) => [e.id, e]));
+    for (const e of restored.entries) map.set(e.id, { ...map.get(e.id), ...e });
+    const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+    setEntries(merged);
+  };
+
+  /* ---- Stats for matrix + parchment ---- */
   const byDay = useMemo(() => {
     const m = new Map();
     for (const e of entries) {
-      const d = parseDate(e.iso || e.date);
-      const k = toDateKey(d);
-      if (!k) continue;
+      const k = toDateKey(e.iso || e.date);
       if (!m.has(k)) m.set(k, []);
       m.get(k).push(e);
     }
     return m;
   }, [entries]);
 
+  // Rolling 12 months (52 weeks) matrix, Monday-first, horizontal (weeks as columns)
   const { weeks, monthLabels } = useMemo(() => buildYearMatrix(byDay), [byDay]);
-  const recent3 = useMemo(
-    () => [...entries].sort((a, b) => new Date(b.iso) - new Date(a.iso)).slice(0, 3),
-    [entries]
-  );
+
+  const recent3 = useMemo(() => {
+    return [...entries].sort((a, b) => new Date(b.iso) - new Date(a.iso)).slice(0, 3);
+  }, [entries]);
+
   const dayEntries = useMemo(() => byDay.get(selectedDayKey) || [], [byDay, selectedDayKey]);
 
-  /* ---- UI ---- */
+  /* ---------- UI ---------- */
   return (
-    <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
-      <header className="flex justify-between items-center mb-2">
+    <div className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+      <header className="flex justify-between items-center mb-1">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button
-          variant="outline"
-          onClick={() => {
-            const next = !dark;
-            setDark(next);
-            localStorage.setItem("gj_theme", next ? "dark" : "light");
-          }}
-        >
+        <Button variant="outline" onClick={() => {
+          const next = !dark; setDark(next); localStorage.setItem("gj_theme", next ? "dark" : "light");
+        }}>
           {dark ? "☀️ Light" : "🌙 Dark"}
         </Button>
       </header>
@@ -224,64 +288,81 @@ export default function App() {
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
         <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>✍️ Journal</Button>
-        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>🕊 Past Entries</Button>
+        <Button variant={view === "past" ? "default" : "outline"} onClick={() => { setView("past"); if(!selectedDayKey) setSelectedDayKey(toDateKey(new Date())); }}>🕊 Past Entries</Button>
         <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>📊 Summary</Button>
       </div>
 
-      {/* ===== Past Entries ===== */}
+      {/* JOURNAL */}
+      {view === "journal" && (
+        <Card>
+          <CardContent className="space-y-4">
+            <Select value={section} onChange={(v)=>{ setSection(v); setQuestion(""); }} options={Object.keys(sections)} />
+            <Select value={question} onChange={setQuestion} options={["", ...sections[section]]} placeholder="Pick a question" />
+            {question && (
+              <>
+                <Textarea placeholder="Write your reflection..." value={entry} onChange={(e)=>setEntry(e.target.value)} />
+                <div>
+                  <p className="text-sm">Mood: {mood}/10 ({moodLabel(mood)})</p>
+                  <Slider min={1} max={10} step={1} value={[mood]} onChange={(v)=>setMood(v[0])} />
+                </div>
+                <Button onClick={handleSave}>Save Entry</Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PAST — Rolling 12-month matrix + parchment day page */}
       {view === "past" && (
         <div className="space-y-4">
-          <Card>
+          {/* Recent 3 */}
+          <Card className="card-hover">
             <CardContent>
               <h3 className="font-semibold mb-2">Recent</h3>
               {recent3.length === 0 ? (
                 <p className="text-sm text-gray-500">No entries yet.</p>
               ) : (
-                recent3.map((e) => (
-                  <div key={e.id} className="border p-2 rounded-md mb-2">
-                    <div className="text-xs text-gray-500">{fmtDate(e.iso)} — {e.section}</div>
-                    <div className="text-sm font-medium">{e.question}</div>
-                    <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
-                    <div className="flex gap-2 mt-1">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedDayKey(toDateKey(e.iso))}>Open</Button>
-                      <Button variant="outline" size="sm" onClick={() => openEdit(e)}>Edit</Button>
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(e.id)}>Delete</Button>
+                <div className="space-y-2">
+                  {recent3.map((e) => (
+                    <div key={e.id} className="flex items-start justify-between rounded-lg border p-2">
+                      <div>
+                        <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
+                        <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
+                        <div className="text-sm font-medium">{e.question}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={()=>setSelectedDayKey(toDateKey(e.iso))}>Open</Button>
+                        <Button variant="outline" onClick={()=>openEdit(e)}>Edit</Button>
+                        <Button variant="outline" onClick={()=>handleDelete(e.id)}>Delete</Button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
 
+          {/* Year matrix (horizontal weeks) */}
           <div className="rounded-xl border p-3">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="font-semibold">Rolling 12-Month Journal Matrix</h3>
-              <div className="flex gap-2 items-center">
-                <span>{heatmapMode === "mood" ? "🎨 Mood" : "📅 Frequency"}</span>
-                <Button size="sm" variant="outline" onClick={() => setHeatmapMode(heatmapMode === "mood" ? "freq" : "mood")}>Toggle</Button>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">Rolling 12-month Journal Matrix</h3>
+              <div className="text-xs text-gray-500">{fmtDate(toDateKey(new Date(new Date().setDate(new Date().getDate()-364))))} → {fmtDate(new Date().toISOString())}</div>
             </div>
 
-            {/* Heatmap */}
             <div className="year-matrix">
               {weeks.map((week, wi) => (
                 <div key={wi} className="year-week">
                   {week.map((cell) => {
                     const stat = cell.stat;
-                    const color =
-                      heatmapMode === "mood"
-                        ? moodToColor(stat?.avgMood)
-                        : freqToColor(stat?.count);
+                    const bg = stat ? moodToColor(stat.avgMood) : "#f3f4f6";
+                    const title = `${cell.label}\n${stat ? `${stat.count} entry${stat.count>1?"ies":""}, avg mood ${stat.avgMood.toFixed(1)}` : "No entry"}`;
+                    const isToday = cell.key === toDateKey(new Date());
                     return (
                       <button
                         key={cell.key}
-                        className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""}`}
-                        style={{ background: color }}
-                        title={
-                          stat
-                            ? `${cell.label}: ${stat.count} entr${stat.count > 1 ? "ies" : "y"}, avg mood ${stat.avgMood?.toFixed(1) || "-"}`
-                            : `${cell.label}: No entry`
-                        }
+                        className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""} ${isToday ? "year-today" : ""}`}
+                        style={{ background: bg }}
+                        title={title}
                         onClick={() => setSelectedDayKey(cell.key)}
                       />
                     );
@@ -290,98 +371,148 @@ export default function App() {
               ))}
             </div>
 
+            {/* Month labels under matrix */}
             <div className="year-month-labels">
               {monthLabels.map((m) => (
                 <span key={m.key} style={{ transform: `translateX(${m.offsetPx}px)` }}>{m.label}</span>
               ))}
             </div>
+          </div>
 
-            {/* Legend */}
-            <div className="year-legend mt-2">
-              {heatmapMode === "mood" ? (
-                <>
-                  <span className="box low"></span>Low
-                  <span className="box mid"></span>Neutral
-                  <span className="box high"></span>Positive
-                </>
+          {/* Selected day parchment page */}
+          <section className={`journal-page ${dark ? "" : "parchment-bg"}`}>
+            <div className="journal-page-inner">
+              <div className="flex items-center justify-between">
+                <h3 className="journal-date">{selectedDayKey ? fmtDate(selectedDayKey) : "Select a day"}</h3>
+                <div className="flex gap-2">
+                  <Button onClick={exportJournalPDF}>📘 PDF</Button>
+                  <Button variant="outline" onClick={exportTxt}>TXT</Button>
+                  <Button variant="outline" onClick={exportCsv}>CSV</Button>
+                </div>
+              </div>
+
+              {dayEntries.length === 0 ? (
+                <p className="text-sm text-gray-500">No entries for this day.</p>
               ) : (
-                <>
-                  <span className="box freq1"></span>Few
-                  <span className="box freq5"></span>Many
-                </>
+                <div className="space-y-4">
+                  {dayEntries.map((e) => (
+                    <div key={e.id} className="journal-entry">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-xs text-gray-500">
+                            {new Date(e.iso || e.date).toLocaleTimeString()} — {e.section}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Mood {e.mood}/10 ({moodLabel(e.mood)}) | {e.sentiment}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={()=>openEdit(e)}>Edit</Button>
+                          <Button variant="outline" onClick={()=>handleDelete(e.id)}>Delete</Button>
+                        </div>
+                      </div>
+                      <p className="mt-2 font-medium">{e.question}</p>
+                      <p className="mt-1 whitespace-pre-wrap">{e.entry}</p>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
+          </section>
         </div>
       )}
 
-      {/* ===== Edit Modal ===== */}
+      {/* SUMMARY */}
+      {view === "summary" && (
+        <Card>
+          <CardContent className="space-y-4">
+            <h2 className="text-2xl font-semibold">Weekly Summary</h2>
+            <SummaryPanel entries={entries} darkMode={dark} onExportPDF={exportJournalPDF} />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
+              <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
+              <Button onClick={exportJournalPDF}>Export .PDF</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Edit Modal */}
       {editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl w-[90%] max-w-md space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[90%] max-w-md space-y-4">
             <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
-            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
+            <Textarea value={editText} onChange={(e)=>setEditText(e.target.value)} />
             <div>
               <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
-              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
+              <Slider min={1} max={10} value={[editMood]} onChange={(v)=>setEditMood(v[0])} />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button variant="outline" onClick={()=>setEditing(null)}>Cancel</Button>
               <Button onClick={saveEdit}>Save</Button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Drive Sync + Install */}
       <div className="flex justify-between items-center mt-8">
         <div className="text-sm text-gray-500">💾 Auto-synced to browser storage</div>
         <InstallPrompt />
       </div>
-
       <div className="text-center mt-3">
-        <GoogleSync dataToSync={{ entries }} />
+        <GoogleSync dataToSync={{ entries }} onRestore={handleRestore} />
       </div>
     </div>
   );
 }
 
-/* ===== Matrix Builder ===== */
+/* ===== Rolling 12-month matrix builder ===== */
 function buildYearMatrix(dayMap) {
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - 364);
-  const day = startDate.getDay();
-  startDate.setDate(startDate.getDate() - ((day + 6) % 7));
+  // End (today, truncated)
+  const end = new Date();
+  const endKey = toDateKey(end);
+  const endDate = new Date(endKey); // 00:00 today
 
+  // Start at 52 weeks ago + align to Monday
+  const start = new Date(endDate);
+  start.setDate(start.getDate() - 7 * 52 + 1);
+  const shift = (start.getDay() + 6) % 7; // Monday=0
+  start.setDate(start.getDate() - shift);
+
+  // Build 52 columns (weeks), 7 rows (Mon..Sun)
   const weeks = [];
-  const monthAnchors = [];
-  const cur = new Date(startDate);
+  const monthAnchors = []; // { key, date, colIndex }
+  let cur = new Date(start);
 
   for (let w = 0; w < 52; w++) {
     const column = [];
     for (let d = 0; d < 7; d++) {
       const key = toDateKey(cur);
-      const label = cur.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      const items = key && dayMap.has(key) ? dayMap.get(key) : [];
-      const stat =
-        items.length > 0
-          ? {
-              count: items.length,
-              avgMood: items.reduce((a, e) => a + (e.mood ?? 0), 0) / items.length,
-            }
-          : null;
+      const label = cur.toLocaleDateString();
+      const items = dayMap.get(key) || [];
+      const stat = items.length
+        ? { count: items.length, avgMood: items.reduce((a, e) => a + (e.mood || 0), 0) / items.length }
+        : null;
+
       column.push({ key, label, stat });
-      if (cur.getDate() === 1) monthAnchors.push({ key, date: new Date(cur), col: w });
+
+      // month anchor on first of month
+      if (cur.getDate() === 1) {
+        monthAnchors.push({ key, date: new Date(cur), col: w });
+      }
+
       cur.setDate(cur.getDate() + 1);
     }
     weeks.push(column);
   }
 
+  // Build month labels with approximate pixel offsets (13px cell + 2px gap)
   const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-  const monthLabels = monthAnchors.map((a) => ({
+  const monthLabels = monthAnchors.map(a => ({
     key: a.key,
     label: MONTHS[a.date.getMonth()],
-    offsetPx: a.col * 16,
+    offsetPx: a.col * (13 + 2), // cell + gap
   }));
 
   return { weeks, monthLabels };

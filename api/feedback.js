@@ -1,19 +1,25 @@
 // File: /api/feedback.js
-// Purpose: Relays lightweight feedback to your Google Apps Script webhook
-// Deploy target: Vercel Serverless Function (Node >=18; native fetch available)
+// Purpose: Relay feedback to your Google Apps Script webhook
+// Environment: Vercel Serverless Function (Node >=18)
 
-const resp = await fetch("https://script.google.com/macros/s/AKfycbwzqAJ13NLdpAxDtb5UYeenSRM8QO0_yrFGOP2gM_TvwE1woAaqgW-WyhxdNX64wMTC/exec", {
-  method: "POST",
-  body: JSON.stringify(payload),
-});
+const GAS_WEBHOOK =
+  "https://script.google.com/macros/s/AKfycbwzqAJ13NLdpAxDtb5UYeenSRM8QO0_yrFGOP2gM_TvwE1woAaqgW-WyhxdNX64wMTC/exec";
 
+/** Helper: read raw request body */
+function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => resolve(data || "{}"));
+    req.on("error", reject);
+  });
+}
 
-/**
- * Minimal schema guard
- */
+/** Minimal input sanitizer */
 function sanitize(input) {
   const safe = {};
-  safe.rating = typeof input?.rating === "number" ? input.rating : null; // 1..5
+  safe.rating = typeof input?.rating === "number" ? input.rating : null;
   safe.category = typeof input?.category === "string" ? input.category.slice(0, 64) : "";
   safe.message = typeof input?.message === "string" ? input.message.slice(0, 2000) : "";
   safe.clientTime = typeof input?.clientTime === "string" ? input.clientTime : new Date().toISOString();
@@ -28,11 +34,11 @@ function sanitize(input) {
           entriesThisMonth: Number(input.stats.entriesThisMonth || 0),
           avgMood7d: Number(input.stats.avgMood7d || 0),
         }
-      : undefined;
-
+      : {};
   return safe;
 }
 
+/** Main handler */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -40,15 +46,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = await (async () => {
-      // Support both raw JSON and form-encoded just in case
-      if (req.headers["content-type"]?.includes("application/json")) {
-        return req.body && typeof req.body === "object" ? req.body : JSON.parse(await getRawBody(req));
-      }
-      return JSON.parse(await getRawBody(req));
-    })();
-
+    const raw = await getRawBody(req);
+    const body = JSON.parse(raw || "{}");
     const safe = sanitize(body);
+
     if (safe.rating == null && !safe.message) {
       return res.status(400).json({ ok: false, error: "Missing rating or message" });
     }
@@ -60,38 +61,26 @@ export default async function handler(req, res) {
       userAgent: req.headers["user-agent"] || "",
     };
 
-    const resp = await fetch(GAS_WEBHOOK, {
+    const gasResp = await fetch(GAS_WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(relayPayload),
     });
 
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      return res.status(502).json({ ok: false, error: "Upstream error", detail: text });
-    }
-
-    // Optional: parse GAS response if it returns JSON
-    let data = null;
+    // GAS responses don't always return JSON; ignore errors
+    let gasText = "";
     try {
-      data = await resp.json();
-    } catch {
-      data = { statusText: await resp.text().catch(() => "ok") };
+      gasText = await gasResp.text();
+    } catch {}
+
+    if (!gasResp.ok) {
+      return res.status(502).json({ ok: false, error: "Upstream error", detail: gasText });
     }
 
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ ok: true, relay: gasText.slice(0, 100) || "OK" });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: "Server error", detail: String(err?.message || err) });
+    return res
+      .status(500)
+      .json({ ok: false, error: "Server error", detail: String(err?.message || err) });
   }
-}
-
-/** Read raw body helper */
-function getRawBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.setEncoding("utf8");
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => resolve(data || "{}"));
-    req.on("error", reject);
-  });
 }

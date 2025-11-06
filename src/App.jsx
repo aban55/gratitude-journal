@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/Card.jsx";
 import { Button } from "./ui/Button.jsx";
 import { Textarea } from "./ui/Textarea.jsx";
@@ -9,7 +9,7 @@ import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
 import jsPDF from "jspdf";
 
-/* Intro + quotes */
+/* ---- Quotes ---- */
 const QUOTES = [
   "Gratitude turns ordinary days into blessings.",
   "Peace begins the moment you choose gratitude.",
@@ -19,7 +19,7 @@ const QUOTES = [
   "Every thankful thought plants a seed of joy.",
 ];
 
-/* Sections & prompts */
+/* ---- Sections & prompts ---- */
 const sections = {
   "People & Relationships": [
     "Who brought a smile to my face today?",
@@ -58,19 +58,27 @@ const sections = {
   ],
 };
 
-/* Helpers */
-function moodLabel(mood) {
-  if (mood <= 3) return "😞 Sad / Low";
-  if (mood <= 6) return "😐 Neutral";
-  if (mood <= 8) return "🙂 Positive";
+/* ---- Helpers ---- */
+const toDateKey = (d) => {
+  const x = new Date(d);
+  const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  return y.toISOString().slice(0, 10); // YYYY-MM-DD
+};
+const fmtDate = (iso) => new Date(iso).toLocaleDateString();
+
+function moodLabel(m) {
+  if (m <= 3) return "😞 Sad / Low";
+  if (m <= 6) return "😐 Neutral";
+  if (m <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful", "peace"];
   const neg = ["tired", "sad", "angry", "stressed", "worried", "upset"];
-  let s = 0; const t = text.toLowerCase();
-  pos.forEach(w => t.includes(w) && (s += 1));
-  neg.forEach(w => t.includes(w) && (s -= 1));
+  let s = 0;
+  const t = (text || "").toLowerCase();
+  pos.forEach((w) => t.includes(w) && (s += 1));
+  neg.forEach((w) => t.includes(w) && (s -= 1));
   if (mood >= 7) s += 1;
   if (mood <= 3) s -= 1;
   if (s > 1) return "😊 Positive";
@@ -78,13 +86,24 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
-const toDateKey = (d) => {
-  const x = new Date(d);
-  return new Date(x.getFullYear(), x.getMonth(), x.getDate()).toISOString().slice(0,10);
-};
-const fmtDate = (iso) => new Date(iso).toLocaleDateString();
+function moodToColor(mood) {
+  if (mood == null) return "#f3f4f6";
+  const t = Math.max(0, Math.min(10, mood)) / 10;
+  let from, to, p;
+  if (t < 0.5) {
+    from = [239, 68, 68]; // red-500
+    to = [245, 158, 11]; // amber-500
+    p = t / 0.5;
+  } else {
+    from = [245, 158, 11];
+    to = [22, 163, 74]; // green-600
+    p = (t - 0.5) / 0.5;
+  }
+  const c = from.map((f, i) => Math.round(f + (to[i] - f) * p));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
 
-/* ------------ Component ------------ */
+/* ===== App ===== */
 export default function App() {
   const [view, setView] = useState("journal"); // journal | past | summary
   const [dark, setDark] = useState(false);
@@ -104,21 +123,16 @@ export default function App() {
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  // calendar tab
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  // day selection for parchment view
   const [selectedDayKey, setSelectedDayKey] = useState(null);
 
-  /* Load from local */
+  /* Load/persist theme & entries */
   useEffect(() => {
     const s = localStorage.getItem("gratitudeEntries");
     if (s) setEntries(JSON.parse(s));
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
-
-  /* Persist to local */
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
   }, [entries]);
@@ -131,153 +145,128 @@ export default function App() {
       id: now.getTime(),
       date: now.toLocaleString(),
       iso: now.toISOString(),
-      section, question, entry, mood,
+      section,
+      question,
+      entry,
+      mood,
       sentiment: analyzeSentiment(entry, mood),
     };
-    setEntries(prev => [...prev, e]);
+    setEntries((prev) => [...prev, e]);
     setEntry(""); setQuestion(""); setMood(5);
-    // if we're on Past tab (calendar), keep selection in sync to today:
     setSelectedDayKey(toDateKey(e.iso));
   };
 
-  /* Delete */
-  const handleDelete = (id) => setEntries(arr => arr.filter(e => e.id !== id));
-
-  /* Edit */
+  /* Delete / Edit */
+  const handleDelete = (id) => setEntries((arr) => arr.filter((e) => e.id !== id));
   const openEdit = (item) => { setEditing(item); setEditText(item.entry); setEditMood(item.mood); };
   const saveEdit = () => {
     if (!editing) return;
     const sentiment = analyzeSentiment(editText, editMood);
-    setEntries(arr => arr.map(e => e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment } : e));
+    setEntries((arr) => arr.map((e) => (e.id === editing.id ? { ...e, entry: editText, mood: editMood, sentiment } : e)));
     setEditing(null);
   };
 
-  /* Exporters */
+  /* TXT / CSV / PDF exports */
   const exportTxt = () => {
-    const content = entries.map(e =>
-      `${fmtDate(e.iso||e.date)}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
-    ).join("\n----------------\n");
+    const content = entries
+      .map(
+        (e) =>
+          `${fmtDate(e.iso || e.date)}\nSection: ${e.section}\nMood: ${e.mood}/10 (${e.sentiment})\nQ: ${e.question}\nA: ${e.entry}\n`
+      )
+      .join("\n----------------\n");
     triggerDownload(new Blob([content], { type: "text/plain" }), "Gratitude_Journal.txt");
   };
   const exportCsv = () => {
-    const header = ["Date","Section","Mood","Sentiment","Question","Entry"];
-    const rows = entries.map(e => [
-      `"${fmtDate(e.iso||e.date)}"`,
+    const header = ["Date", "Section", "Mood", "Sentiment", "Question", "Entry"];
+    const rows = entries.map((e) => [
+      `"${fmtDate(e.iso || e.date)}"`,
       `"${e.section}"`,
       e.mood,
       `"${e.sentiment}"`,
       `"${e.question}"`,
-      `"${e.entry.replace(/"/g,'""')}"`,
+      `"${(e.entry || "").replace(/"/g, '""')}"`,
     ]);
-    const csv = [header.join(","), ...rows.map(r=>r.join(","))].join("\n");
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
     triggerDownload(new Blob([csv], { type: "text/csv" }), "Gratitude_Journal.csv");
   };
-  const exportJournalPDF = async () => {
-    // Cover page + month grouping
-    const pdf = new jsPDF("p","pt","a4");
+  const exportJournalPDF = () => {
+    const pdf = new jsPDF("p", "pt", "a4");
     const pageH = pdf.internal.pageSize.height;
     const marginX = 56, marginY = 64, lineH = 18;
 
-    // Cover
-    pdf.setFont("Times","bold"); pdf.setFontSize(22);
+    // cover
+    pdf.setFont("Times", "bold"); pdf.setFontSize(22);
     pdf.text("🌿 My Gratitude Journal", marginX, marginY);
-    pdf.setFont("Times","normal"); pdf.setFontSize(12);
-    pdf.text(`Exported on ${new Date().toLocaleString()}`, marginX, marginY+26);
-    pdf.text(`Total entries: ${entries.length}`, marginX, marginY+44);
-    pdf.text(`Average mood (last 7): ${avgLastN(entries,7).toFixed(1)}/10`, marginX, marginY+62);
+    pdf.setFont("Times", "normal"); pdf.setFontSize(12);
+    pdf.text(`Exported on ${new Date().toLocaleString()}`, marginX, marginY + 26);
+    pdf.text(`Total entries: ${entries.length}`, marginX, marginY + 44);
     pdf.addPage();
 
-    // Group by YYYY-MM
+    // month-grouped
     const byMonth = new Map();
-    const sorted = [...entries].sort((a,b)=>new Date(a.iso)-new Date(b.iso));
+    const sorted = [...entries].sort((a, b) => new Date(a.iso) - new Date(b.iso));
     for (const e of sorted) {
       const d = new Date(e.iso || e.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       if (!byMonth.has(key)) byMonth.set(key, []);
       byMonth.get(key).push(e);
     }
-
     for (const [mon, list] of byMonth.entries()) {
       let y = marginY;
-      pdf.setFont("Times","bold"); pdf.setFontSize(16);
-      const title = new Date(`${mon}-01T00:00:00`).toLocaleString(undefined,{month:"long",year:"numeric"});
+      pdf.setFont("Times", "bold"); pdf.setFontSize(16);
+      const title = new Date(`${mon}-01T00:00:00`).toLocaleString(undefined, { month: "long", year: "numeric" });
       pdf.text(title, marginX, y); y += 24;
+      pdf.setFont("Times", "normal"); pdf.setFontSize(12);
 
-      pdf.setFont("Times","normal"); pdf.setFontSize(12);
       for (const e of list) {
         if (y > pageH - 120) { pdf.addPage(); y = marginY; }
-        pdf.setTextColor(34,139,34); // green-ish date
-        pdf.text(fmtDate(e.iso||e.date), marginX, y); y += lineH;
-        pdf.setTextColor(0,0,0);
+        pdf.setTextColor(34, 139, 34); pdf.text(fmtDate(e.iso || e.date), marginX, y); y += lineH;
+        pdf.setTextColor(0, 0, 0);
         pdf.text(`Section: ${e.section}`, marginX, y); y += lineH;
         pdf.text(`Mood: ${e.mood}/10  |  ${e.sentiment}`, marginX, y); y += lineH;
-        pdf.setFont("Times","bold"); pdf.text(`Q: ${e.question}`, marginX, y); y += lineH;
-        pdf.setFont("Times","normal");
-        const lines = pdf.splitTextToSize(e.entry, 520);
-        pdf.text(lines, marginX, y); y += lines.length*lineH + 14;
+        pdf.setFont("Times", "bold"); pdf.text(`Q: ${e.question}`, marginX, y); y += lineH;
+        pdf.setFont("Times", "normal");
+        const lines = pdf.splitTextToSize(e.entry || "", 520);
+        pdf.text(lines, marginX, y); y += lines.length * lineH + 14;
       }
       pdf.addPage();
     }
-    pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0,10)}.pdf`);
+    pdf.save(`Gratitude_Journal_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
   const triggerDownload = (blob, name) => {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = name; a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
-  };
-  const avgLastN = (arr,n) => {
-    if (!arr.length) return 0;
-    const last = arr.slice(-n);
-    return last.reduce((a,e)=>a+(e.mood||0),0)/last.length;
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
   };
 
   /* Drive -> local merge (kept; de-dup by id) */
   const handleRestore = (restored) => {
     if (!restored?.entries) return;
-    const incoming = restored.entries;
-    const map = new Map(entries.map(e=>[e.id,e]));
-    for (const e of incoming) map.set(e.id, { ...map.get(e.id), ...e });
-    const merged = Array.from(map.values()).sort((a,b)=>(a.id||0)-(b.id||0));
+    const map = new Map(entries.map((e) => [e.id, e]));
+    for (const e of restored.entries) map.set(e.id, { ...map.get(e.id), ...e });
+    const merged = Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
     setEntries(merged);
   };
 
-  /* ------- Calendar Past Tab ------- */
+  /* ---- Stats for matrix + parchment ---- */
   const byDay = useMemo(() => {
     const m = new Map();
     for (const e of entries) {
-      const key = toDateKey(e.iso || e.date);
-      if (!m.has(key)) m.set(key, []);
-      m.get(key).push(e);
+      const k = toDateKey(e.iso || e.date);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(e);
     }
     return m;
   }, [entries]);
 
-  const monthMatrix = useMemo(() => {
-    // Build a 6 x 7 matrix for current calendarMonth
-    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-    const startOffset = (first.getDay() + 6) % 7; // Monday-start
-    const start = new Date(first); start.setDate(first.getDate() - startOffset);
-    const cells = [];
-    for (let i=0;i<42;i++) {
-      const d = new Date(start); d.setDate(start.getDate()+i);
-      const key = toDateKey(d);
-      const inMonth = d.getMonth() === calendarMonth.getMonth();
-      const items = byDay.get(key) || [];
-      // compute avg mood
-      const avgMood = items.length ? (items.reduce((a,e)=>a+(e.mood||0),0)/items.length) : null;
-      cells.push({ date: d, key, inMonth, count: items.length, avgMood });
-    }
-    return cells;
-  }, [calendarMonth, byDay]);
+  // Rolling 12 months (52 weeks) matrix, Monday-first, horizontal (weeks as columns)
+  const { weeks, monthLabels } = useMemo(() => buildYearMatrix(byDay), [byDay]);
 
   const recent3 = useMemo(() => {
-    return [...entries].sort((a,b)=>new Date(b.iso)-new Date(a.iso)).slice(0,3);
+    return [...entries].sort((a, b) => new Date(b.iso) - new Date(a.iso)).slice(0, 3);
   }, [entries]);
-
-  const selectTodayIfEmpty = () => {
-    if (!selectedDayKey) setSelectedDayKey(toDateKey(new Date()));
-  };
-  useEffect(() => { if (view === "past") selectTodayIfEmpty(); }, [view]); // ensure default selection on tab open
 
   const dayEntries = useMemo(() => byDay.get(selectedDayKey) || [], [byDay, selectedDayKey]);
 
@@ -286,13 +275,9 @@ export default function App() {
     <div className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
       <header className="flex justify-between items-center mb-1">
         <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
-        <Button
-          variant="outline"
-          onClick={() => {
-            const next = !dark; setDark(next);
-            localStorage.setItem("gj_theme", next ? "dark" : "light");
-          }}
-        >
+        <Button variant="outline" onClick={() => {
+          const next = !dark; setDark(next); localStorage.setItem("gj_theme", next ? "dark" : "light");
+        }}>
           {dark ? "☀️ Light" : "🌙 Dark"}
         </Button>
       </header>
@@ -303,7 +288,7 @@ export default function App() {
       {/* Tabs */}
       <div className="flex justify-center gap-2 mb-4">
         <Button variant={view === "journal" ? "default" : "outline"} onClick={() => setView("journal")}>✍️ Journal</Button>
-        <Button variant={view === "past" ? "default" : "outline"} onClick={() => setView("past")}>🕊 Past Entries</Button>
+        <Button variant={view === "past" ? "default" : "outline"} onClick={() => { setView("past"); if(!selectedDayKey) setSelectedDayKey(toDateKey(new Date())); }}>🕊 Past Entries</Button>
         <Button variant={view === "summary" ? "default" : "outline"} onClick={() => setView("summary")}>📊 Summary</Button>
       </div>
 
@@ -327,10 +312,10 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST — Month calendar + parchment day page */}
+      {/* PAST — Rolling 12-month matrix + parchment day page */}
       {view === "past" && (
         <div className="space-y-4">
-          {/* Top: last 3 entries quick access */}
+          {/* Recent 3 */}
           <Card className="card-hover">
             <CardContent>
               <h3 className="font-semibold mb-2">Recent</h3>
@@ -338,15 +323,15 @@ export default function App() {
                 <p className="text-sm text-gray-500">No entries yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {recent3.map(e => (
+                  {recent3.map((e) => (
                     <div key={e.id} className="flex items-start justify-between rounded-lg border p-2">
                       <div>
-                        <div className="text-xs text-gray-500">{fmtDate(e.iso||e.date)} — {e.section}</div>
+                        <div className="text-xs text-gray-500">{fmtDate(e.iso || e.date)} — {e.section}</div>
                         <div className="text-sm">Mood {e.mood}/10 ({moodLabel(e.mood)})</div>
                         <div className="text-sm font-medium">{e.question}</div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" onClick={()=>{setSelectedDayKey(toDateKey(e.iso));}}>Open</Button>
+                        <Button variant="outline" onClick={()=>setSelectedDayKey(toDateKey(e.iso))}>Open</Button>
                         <Button variant="outline" onClick={()=>openEdit(e)}>Edit</Button>
                         <Button variant="outline" onClick={()=>handleDelete(e.id)}>Delete</Button>
                       </div>
@@ -357,42 +342,44 @@ export default function App() {
             </CardContent>
           </Card>
 
-          {/* Calendar controls */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={()=>setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth()-1, 1))}>← Prev</Button>
-              <Button variant="outline" onClick={()=>setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth()+1, 1))}>Next →</Button>
+          {/* Year matrix (horizontal weeks) */}
+          <div className="rounded-xl border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">Rolling 12-month Journal Matrix</h3>
+              <div className="text-xs text-gray-500">{fmtDate(toDateKey(new Date(new Date().setDate(new Date().getDate()-364))))} → {fmtDate(new Date().toISOString())}</div>
             </div>
-            <div className="font-semibold">
-              {calendarMonth.toLocaleString(undefined, { month:"long", year:"numeric" })}
+
+            <div className="year-matrix">
+              {weeks.map((week, wi) => (
+                <div key={wi} className="year-week">
+                  {week.map((cell) => {
+                    const stat = cell.stat;
+                    const bg = stat ? moodToColor(stat.avgMood) : "#f3f4f6";
+                    const title = `${cell.label}\n${stat ? `${stat.count} entry${stat.count>1?"ies":""}, avg mood ${stat.avgMood.toFixed(1)}` : "No entry"}`;
+                    const isToday = cell.key === toDateKey(new Date());
+                    return (
+                      <button
+                        key={cell.key}
+                        className={`year-cell ${cell.key === selectedDayKey ? "year-cell-selected" : ""} ${isToday ? "year-today" : ""}`}
+                        style={{ background: bg }}
+                        title={title}
+                        onClick={() => setSelectedDayKey(cell.key)}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-            <div />
+
+            {/* Month labels under matrix */}
+            <div className="year-month-labels">
+              {monthLabels.map((m) => (
+                <span key={m.key} style={{ transform: `translateX(${m.offsetPx}px)` }}>{m.label}</span>
+              ))}
+            </div>
           </div>
 
-          {/* Calendar grid */}
-          <div className="calendar-grid">
-            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => (
-              <div key={d} className="calendar-head">{d}</div>
-            ))}
-            {monthMatrix.map(({date,key,inMonth,count,avgMood}) => {
-              const isSel = key === selectedDayKey;
-              const moodColor = avgMood == null ? undefined : moodToColor(avgMood);
-              return (
-                <button
-                  key={key}
-                  className={`calendar-day ${inMonth ? "" : "calendar-dim"} ${isSel ? "calendar-selected":""}`}
-                  style={moodColor ? { background: moodColor } : undefined}
-                  onClick={()=>setSelectedDayKey(key)}
-                  title={`${date.toDateString()} — ${count} entry${count===1?"":"ies"}`}
-                >
-                  <span className="calendar-date-num">{date.getDate()}</span>
-                  {count > 0 && <span className="calendar-dot" />}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Selected day page */}
+          {/* Selected day parchment page */}
           <section className={`journal-page ${dark ? "" : "parchment-bg"}`}>
             <div className="journal-page-inner">
               <div className="flex items-center justify-between">
@@ -408,7 +395,7 @@ export default function App() {
                 <p className="text-sm text-gray-500">No entries for this day.</p>
               ) : (
                 <div className="space-y-4">
-                  {dayEntries.map(e => (
+                  {dayEntries.map((e) => (
                     <div key={e.id} className="journal-entry">
                       <div className="flex justify-between items-start">
                         <div>
@@ -480,13 +467,53 @@ export default function App() {
   );
 }
 
-/* ---- helpers ---- */
-function moodToColor(mood){
-  // red(#ef4444) → yellow(#f59e0b) → green(#16a34a)
-  const clamp = Math.max(0, Math.min(10, mood)) / 10;
-  let from,to,p;
-  if (clamp < 0.5){ from=[239,68,68]; to=[245,158,11]; p=clamp/0.5; }
-  else { from=[245,158,11]; to=[22,163,74]; p=(clamp-0.5)/0.5; }
-  const c = from.map((f,i)=>Math.round(f + (to[i]-f)*p));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
+/* ===== Rolling 12-month matrix builder ===== */
+function buildYearMatrix(dayMap) {
+  // End (today, truncated)
+  const end = new Date();
+  const endKey = toDateKey(end);
+  const endDate = new Date(endKey); // 00:00 today
+
+  // Start at 52 weeks ago + align to Monday
+  const start = new Date(endDate);
+  start.setDate(start.getDate() - 7 * 52 + 1);
+  const shift = (start.getDay() + 6) % 7; // Monday=0
+  start.setDate(start.getDate() - shift);
+
+  // Build 52 columns (weeks), 7 rows (Mon..Sun)
+  const weeks = [];
+  const monthAnchors = []; // { key, date, colIndex }
+  let cur = new Date(start);
+
+  for (let w = 0; w < 52; w++) {
+    const column = [];
+    for (let d = 0; d < 7; d++) {
+      const key = toDateKey(cur);
+      const label = cur.toLocaleDateString();
+      const items = dayMap.get(key) || [];
+      const stat = items.length
+        ? { count: items.length, avgMood: items.reduce((a, e) => a + (e.mood || 0), 0) / items.length }
+        : null;
+
+      column.push({ key, label, stat });
+
+      // month anchor on first of month
+      if (cur.getDate() === 1) {
+        monthAnchors.push({ key, date: new Date(cur), col: w });
+      }
+
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(column);
+  }
+
+  // Build month labels with approximate pixel offsets (13px cell + 2px gap)
+  const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const monthLabels = monthAnchors.map(a => ({
+    key: a.key,
+    label: MONTHS[a.date.getMonth()],
+    offsetPx: a.col * (13 + 2), // cell + gap
+  }));
+
+  return { weeks, monthLabels };
 }

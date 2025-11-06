@@ -65,6 +65,7 @@ function moodLabel(mood) {
   if (mood <= 8) return "🙂 Positive";
   return "😄 Uplifted";
 }
+
 function analyzeSentiment(text, mood) {
   const pos = ["happy", "joy", "grateful", "calm", "love", "hope", "thankful"];
   const neg = ["tired", "sad", "angry", "stressed", "worried"];
@@ -79,6 +80,7 @@ function analyzeSentiment(text, mood) {
   if (s === 0) return "😐 Neutral";
   return "😟 Stressed";
 }
+
 const toDateKey = (isoOrDate) => {
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
@@ -111,6 +113,7 @@ export default function App() {
     const theme = localStorage.getItem("gj_theme");
     if (theme) setDark(theme === "dark");
   }, []);
+
   // Persist local
   useEffect(() => {
     localStorage.setItem("gratitudeEntries", JSON.stringify(entries));
@@ -191,6 +194,13 @@ export default function App() {
     pageRefs.current[k]?.scrollIntoView({ behavior: "smooth", inline: "start" });
   };
 
+  // Handle restore from external sources (e.g., Google Drive)
+  const handleRestore = (restoredEntries) => {
+    if (restoredEntries) {
+      setEntries((prevEntries) => [...prevEntries, ...restoredEntries]);
+    }
+  };
+
   return (
     <div
       className={`min-h-screen p-6 max-w-3xl mx-auto app-fade ${
@@ -267,9 +277,9 @@ export default function App() {
         </Card>
       )}
 
-      {/* PAST — horizontal pages with parchment */}
+      {/* PAST */}
       {view === "past" && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {pages.length === 0 ? (
             <Card><CardContent>No entries yet.</CardContent></Card>
           ) : (
@@ -330,39 +340,6 @@ export default function App() {
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {/* SUMMARY */}
-      {view === "summary" && (
-        <Card>
-          <CardContent className="space-y-4">
-            <h2 className="text-2xl font-semibold">Weekly Summary</h2>
-            <SummaryPanel entries={entries} darkMode={dark} onExportPDF={exportJournalPDF} />
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={exportTxt}>Export .TXT</Button>
-              <Button variant="outline" onClick={exportCsv}>Export .CSV</Button>
-              <Button onClick={exportJournalPDF}>Export .PDF</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Edit Modal */}
-      {editing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[90%] max-w-md space-y-4">
-            <h3 className="text-lg font-semibold">✏️ Edit Entry</h3>
-            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} />
-            <div>
-              <p className="text-sm">Mood: {editMood}/10 ({moodLabel(editMood)})</p>
-              <Slider min={1} max={10} value={[editMood]} onChange={(v) => setEditMood(v[0])} />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-              <Button onClick={saveEdit}>Save</Button>
-            </div>
-          </div>
         </div>
       )}
 

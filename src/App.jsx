@@ -8,6 +8,24 @@ import GoogleSync from "./GoogleSync.jsx";
 import InstallPrompt from "./InstallPrompt.jsx";
 import SummaryPanel from "./SummaryPanel.jsx";
 import jsPDF from "jspdf";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Privacy from "./pages/Privacy.jsx";
+import Terms from "./pages/Terms.jsx";
+import Home from "./Home.jsx"; // your main component
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+      </Routes>
+    </Router>
+  );
+}
+
+
 
 /* =========================
    Constants & Helpers

@@ -277,3 +277,51 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
   color: #3a2e15;
 }
+/* General Dark Mode Styles */
+body {
+  background-color: #1c1c1c; /* Dark background */
+  color: #f0f0f0; /* Light text for legibility */
+}
+
+/* Button & text highlight */
+button, .button, .button-outline {
+  color: #fff;
+  background-color: #444444; /* Darker button background */
+  border: 1px solid #888; /* Light border for contrast */
+}
+
+button:hover, .button:hover, .button-outline:hover {
+  background-color: #666666; /* Lighter hover effect */
+  border-color: #ccc;
+}
+
+/* Ensure all text is light on dark background */
+h1, h2, h3, h4, h5, h6 {
+  color: #f9f9f9; /* Light color for headings */
+}
+
+p, .text-normal, .text-sm {
+  color: #d1d1d1; /* Light text for paragraphs */
+}
+
+/* Journal text area */
+textarea {
+  background-color: #333333; /* Dark background for text areas */
+  color: #d1d1d1; /* Light text in textareas */
+  border: 1px solid #444444;
+}
+
+textarea:focus {
+  border-color: #888888;
+}
+
+/* Mood slider for dark mode */
+input[type="range"] {
+  background-color: #444444;
+  color: #00e400; /* A light green for the slider */
+}
+
+/* Specific sections or highlighted text */
+.text-highlight {
+  color: #ff9800; /* Bright highlight text color */
+}

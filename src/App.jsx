@@ -13,18 +13,6 @@ import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 import Home from "./Home.jsx"; // your main component
 
-export default function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-      </Routes>
-    </Router>
-  );
-}
-
 
 
 /* =========================
@@ -517,6 +505,16 @@ function WelcomeModal({
    Main App
 ========================= */
 export default function App() {
+
+return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+      </Routes>
+    </Router>
+  );
   const [view, setView] = useState("journal");
   const [dark, setDark] = useState(false);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);

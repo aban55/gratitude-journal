@@ -299,7 +299,7 @@ function FeedbackModal({ open, onClose, onSubmit }) {
 }
 
 /* =========================
-   Welcome Modal
+   Welcome Modal (Mobile-first)
 ========================= */
 function WelcomeModal({
   open,
@@ -309,161 +309,180 @@ function WelcomeModal({
   reminderTime,
   onReminderEnabled,
   onReminderTime,
-  onOpenFeedback, // new
+  onOpenFeedback,
 }) {
   const [showAbout, setShowAbout] = useState(false);
-
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn"
-      style={{ animationDuration: "0.4s" }}
+      className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm"
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+      aria-modal="true"
+      role="dialog"
     >
-      <div className="max-w-2xl w-[90%] sm:w-[600px] bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl border border-amber-300 p-8 parchment-bg relative">
-        <h2 className="text-3xl font-bold mb-3 flex items-center gap-2">
-          🌿 Welcome to Your Gratitude Journal
-        </h2>
+      {/* Shell: mobile-first card that can scroll, with sticky footer */}
+      <div className="mx-auto h-full max-w-[640px] flex flex-col">
+        {/* Card */}
+        <div className="bg-[#fbf5e6] text-amber-900 border border-amber-300 rounded-none sm:rounded-2xl sm:m-4 sm:mt-6 shadow-2xl flex-1 flex flex-col overflow-hidden parchment-bg">
 
-        {!showAbout ? (
-          <>
-            <p className="leading-relaxed text-[15px]">
-              Practising gratitude trains your mind to notice what’s going right.
-              Even a few lines a day can improve mood, reduce stress, and build resilience.
-              This app helps you build that habit—gently and consistently.
-            </p>
+          {/* Header (compact) */}
+          <div className="px-5 pt-5 sm:px-8 sm:pt-8">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2">
+              🌿 Welcome to Your Gratitude Journal
+            </h2>
+          </div>
 
-            <div className="mt-6">
-              <h3 className="font-semibold text-lg mb-2 text-amber-900">✨ How it works</h3>
-              <ul className="list-disc pl-6 space-y-1 text-[15px]">
-                <li>Select a question or write freely about what you’re thankful for.</li>
-                <li>Record your reflection and set your mood (1–10).</li>
-                <li>Your entries save automatically — locally and to Google Drive (if signed in).</li>
-                <li>Review, edit, and export from the <i>Past Entries</i> or <i>Summary</i> tabs.</li>
-              </ul>
-            </div>
+          {/* Body: scrollable on small screens */}
+          <div className="px-5 sm:px-8 pb-4 overflow-y-auto">
+            {!showAbout ? (
+              <>
+                <p className="leading-relaxed text-[15px] sm:text-[15px]">
+                  Practising gratitude trains your mind to notice what’s going right.
+                  Even a few lines a day can improve mood, reduce stress, and build resilience.
+                  This app helps you build that habit—gently and consistently.
+                </p>
 
-            {/* Habit & Reminder */}
-            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <h4 className="font-semibold text-amber-800 mb-2">🌞 Build Your Daily Habit</h4>
-              <p className="text-[15px] text-amber-800/90 leading-relaxed mb-3">
-                Take two quiet minutes each day to pause and note one thing you’re grateful for.
-                Consistency &gt; perfection — tiny steps, every day.
-              </p>
+                <div className="mt-5">
+                  <h3 className="font-semibold text-lg mb-2 text-amber-900">
+                    ✨ How it works
+                  </h3>
+                  <ul className="list-disc pl-5 space-y-1 text-[15px]">
+                    <li>Select a question or write freely about what you’re thankful for.</li>
+                    <li>Record your reflection and set your mood (1–10).</li>
+                    <li>Your entries save automatically — locally and to Google Drive (if signed in).</li>
+                    <li>Review, edit, and export from the <i>Past Entries</i> or <i>Summary</i> tabs.</li>
+                  </ul>
+                </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Select time first, then enable */}
-                <select
-                  value={reminderTime}
-                  onChange={(e) => onReminderTime(e.target.value)}
-                  className="border border-amber-300 rounded-md px-2 py-1 bg-white text-amber-900"
-                >
-                  <option value="07:00">7:00 AM</option>
-                  <option value="12:00">12:00 PM</option>
-                  <option value="20:00">8:00 PM</option>
-                  <option value="21:00">9:00 PM</option>
-                  <option value="22:00">10:00 PM</option>
-                </select>
+                {/* Habit & Reminder */}
+                <div className="mt-5 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-amber-800 mb-2">🌞 Build Your Daily Habit</h4>
+                  <p className="text-[15px] text-amber-800/90 leading-relaxed mb-3">
+                    Take two quiet minutes each day to pause and note one thing you’re grateful for.
+                    Consistency &gt; perfection — tiny steps, every day.
+                  </p>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={reminderEnabled}
-                    onChange={(e) => onReminderEnabled(e.target.checked)}
-                  />
-                  <span className="text-[15px]">Enable Daily Reminder</span>
-                </label>
-              </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <select
+                      value={reminderTime}
+                      onChange={(e) => onReminderTime(e.target.value)}
+                      className="h-10 border border-amber-300 rounded-md px-2 bg-white text-amber-900"
+                    >
+                      <option value="07:00">7:00 AM</option>
+                      <option value="12:00">12:00 PM</option>
+                      <option value="20:00">8:00 PM</option>
+                      <option value="21:00">9:00 PM</option>
+                      <option value="22:00">10:00 PM</option>
+                    </select>
 
-              <p className="mt-2 text-[13px] text-amber-700">
-                You’ll get a gentle nudge at your chosen time. If notifications are blocked, a small in-app alert appears instead.
-              </p>
-            </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={reminderEnabled}
+                        onChange={(e) => onReminderEnabled(e.target.checked)}
+                        className="h-5 w-5"
+                      />
+                      <span className="text-[15px]">Enable Daily Reminder</span>
+                    </label>
+                  </div>
 
-            <div className="mt-8 flex flex-wrap justify-between items-center gap-3">
-              <button
-                onClick={() => setShowAbout(true)}
-                className="text-sm text-amber-700 underline hover:text-amber-900"
-              >
-                🪷 Why Gratitude Matters
-              </button>
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
-                >
-                  Maybe Later
-                </Button>
-                <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
-                  Get Started
-                </Button>
-              </div>
-            </div>
+                  <p className="mt-2 text-[13px] text-amber-700">
+                    You’ll get a gentle nudge at your chosen time. If notifications are blocked, a small in-app alert appears instead.
+                  </p>
+                </div>
 
-            {/* ✅ Moved privacy note to bottom */}
-            <div className="mt-6 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 text-center leading-relaxed">
-              <strong>Private by design.</strong> Your journal entries are stored only on your device.
-              If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
-              Feedback, if you share it, is separate and contains no journal content.
-              <button
-  onClick={() => {
-    onOpenFeedback();
-    setShowAbout(false); // optional: ensure modal overlay stays consistent
-  }}
-  className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
->
-  Leave feedback →
-</button>
+                <div className="mt-6 flex items-center justify-between">
+                  <button
+                    onClick={() => setShowAbout(true)}
+                    className="text-sm text-amber-700 underline hover:text-amber-900"
+                  >
+                    🪷 Why Gratitude Matters
+                  </button>
+                  <div className="hidden sm:flex gap-3">
+                    <Button variant="outline" onClick={onClose} className="bg-white border border-amber-300">
+                      Maybe Later
+                    </Button>
+                    <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
+                      Get Started
+                    </Button>
+                  </div>
+                </div>
 
-            </div>
-          </>
-        ) : (
-          <>
-            <h3 className="text-xl font-semibold mb-2 text-amber-900">🪷 The Power of Gratitude</h3>
-            <p className="leading-relaxed text-[15px] mb-4">
-              Gratitude is more than a feeling — it’s a practice that reshapes how your mind
-              interprets the world. Just a few minutes of journaling each day can:
-            </p>
-            <ul className="list-disc pl-6 space-y-1 text-[15px]">
-              <li>Reduce stress, anxiety, and overthinking.</li>
-              <li>Improve sleep and emotional balance.</li>
-              <li>Strengthen relationships by increasing empathy.</li>
-              <li>Rewire your brain to spot positive patterns naturally.</li>
-            </ul>
+                {/* Privacy note + inline feedback trigger */}
+                <div className="mt-5 text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 text-center leading-relaxed">
+                  <strong>Private by design.</strong> Your journal entries are stored only on your device.
+                  If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+                  Feedback, if you share it, is separate and contains no journal content.
+                  <button
+                    onClick={() => onOpenFeedback()}
+                    className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
+                  >
+                    Leave feedback →
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-semibold mb-2 text-amber-900">🪷 The Power of Gratitude</h3>
+                <p className="leading-relaxed text-[15px] mb-4">
+                  Gratitude is more than a feeling — it’s a practice that reshapes how your mind
+                  interprets the world. Just a few minutes of journaling each day can:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px]">
+                  <li>Reduce stress, anxiety, and overthinking.</li>
+                  <li>Improve sleep and emotional balance.</li>
+                  <li>Strengthen relationships by increasing empathy.</li>
+                  <li>Rewire your brain to spot positive patterns naturally.</li>
+                </ul>
 
-            <div className="mt-8 flex justify-end gap-3">
+                <div className="mt-6 hidden sm:flex justify-end gap-3">
+                  <Button variant="outline" onClick={() => setShowAbout(false)} className="bg-white border border-amber-300">
+                    ← Back
+                  </Button>
+                  <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
+                    Start Journaling
+                  </Button>
+                </div>
+
+                {/* Privacy note (also under About) */}
+                <div className="mt-5 text-[13px] text-amber-900/80 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 text-center leading-relaxed">
+                  <strong className="text-amber-900">Private by design.</strong> Your journal entries stay only on your device.
+                  If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
+                  Feedback is separate and contains no journal content.
+                  <button
+                    onClick={() => onOpenFeedback()}
+                    className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
+                  >
+                    Leave feedback →
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Sticky footer (always visible on mobile) */}
+          <div className="px-5 sm:px-8 py-4 border-t border-amber-200 bg-[#fbf5e6] sticky bottom-0">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={() => setShowAbout(false)}
-                className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+                onClick={() => (showAbout ? setShowAbout(false) : onClose())}
+                className="flex-1 bg-white border border-amber-300 h-12 text-base"
               >
-                ← Back
+                {showAbout ? "← Back" : "Maybe Later"}
               </Button>
-              <Button onClick={onStart} className="bg-amber-600 hover:bg-amber-700 text-white px-6">
-                Start Journaling
+              <Button
+                onClick={onStart}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base"
+              >
+                {showAbout ? "Start Journaling" : "Get Started"}
               </Button>
             </div>
-
-            {/* ✅ Also add privacy note below “Start Journaling” */}
-            <div className="mt-6 text-[13px] text-amber-900/80 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 text-center leading-relaxed backdrop-blur-sm">
-  <strong className="text-amber-900">Private by design.</strong> Your journal entries stay only on your device.
-  If you connect Google Drive, a copy can be synced to <i>your</i> Drive. We never see your entries.
-  Feedback, if you share it, is separate and contains no journal content.
-  <button
-  onClick={() => {
-    onOpenFeedback();
-    setShowAbout(false); // optional: ensure modal overlay stays consistent
-  }}
-  className="ml-2 text-amber-700 underline hover:text-amber-900 transition-colors duration-150"
->
-  Leave feedback →
-</button>
-
-</div>
-
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -786,7 +805,10 @@ export default function App() {
 
   /* Render */
   return (
-    <div className={`min-h-screen p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+    <div
+  className={`min-h-screen p-4 sm:p-6 max-w-3xl mx-auto ${dark ? "bg-gray-900 text-gray-100" : "bg-gradient-to-b from-amber-50 to-white text-gray-900"}`}
+>
+
       {/* Toast */}
       <Toast message={toast} onClose={() => setToast("")} />
 

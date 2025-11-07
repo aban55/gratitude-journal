@@ -1,0 +1,100 @@
+// src/Home.jsx
+import { useJournal } from "./context/JournalContext.jsx";
+
+import React from "react";
+
+const { entries, addEntry, stats, toast, setToast, showGlow, setShowGlow } = useJournal();
+
+// UI
+import Toast from "./components/UI/Toast.jsx";
+import SavedGlow from "./components/UI/SavedGlow.jsx";
+import FirstEntryPrompt from "./components/UI/FirstEntryPrompt.jsx";
+import Header from "./components/UI/Header.jsx";
+
+// Enhancements
+import Badges from "./components/Enhancements/Badges.jsx";
+import WeeklyRecap from "./components/Enhancements/WeeklyRecap.jsx";
+import ShareReflection from "./components/Enhancements/ShareReflection.jsx";
+
+// Journal
+import JournalEditor from "./components/Journal/JournalEditor.jsx";
+
+/**
+ * Home
+ * - Thin composition layer. Keeps linear flow:
+ *   Header → helpers (Toast/Glow/Prompt) → Enhancements → JournalEditor
+ *
+ * Expected (optional) props from parent (App):
+ *  - sections: object of prompt sections -> questions[]
+ *  - addEntry: function(entry) to append/save a new entry
+ *  - toast: string; message for Toast
+ *  - setToast: fn(msg) to update toast
+ *  - showSavedGlow: boolean; controls tiny 'Saved' glow
+ *  - setShowGlow: fn(boolean) to toggle SavedGlow
+ *  - firstPromptOpen: boolean; controls FirstEntryPrompt visibility
+ *  - setFirstPromptOpen: fn(boolean) to toggle prompt
+ *  - stats: { currentStreak, entriesThisWeek, ... } (optional for Header/badges)
+ */
+export default function Home({
+  sections = {},                        // provide from App (your canonical sections object)
+  addEntry = () => {},                  // pass real handler from App
+  toast = "",                           // App-level toast string
+  setToast = () => {},                  // App-level setter
+  showSavedGlow = false,                // App-level SavedGlow flag
+  setShowGlow = () => {},               // App-level setter
+  firstPromptOpen = false,              // App-level FirstEntryPrompt flag
+  setFirstPromptOpen = () => {},        // App-level setter
+  stats = { currentStreak: 0, entriesThisWeek: 0 }, // optional
+}) {
+  return (
+    <div
+      className="min-h-screen max-w-3xl mx-auto p-4 sm:p-6"
+      role="main"
+      aria-label="Gratitude Journal Home"
+    >
+      {/* Header (keeps your right-side buttons etc. inside the component) */}
+      <Header stats={stats} />
+
+      {/* Global helpers (top of page so they overlay consistently) */}
+      <Toast message={toast} onClose={() => setToast("")} />
+
+      <SavedGlow visible={!!showSavedGlow} />
+
+      <FirstEntryPrompt
+        open={!!firstPromptOpen}
+        onClose={() => setFirstPromptOpen(false)}
+        onStart={() => {
+          // Seed the friendly starter question once and switch to editor
+          try {
+            // If you want to force a specific starter here, you can:
+            // setSection?.("Perspective & Hope");
+            // setQuestion?.("What made you smile today?");
+          } finally {
+            setFirstPromptOpen(false);
+          }
+        }}
+      />
+
+      {/* Micro-achievements (badges under title/streak line) */}
+      <div className="mt-2">
+        <Badges />
+      </div>
+
+      {/* End-of-week recap popup (it self-manages Sunday check internally) */}
+      <WeeklyRecap />
+
+      {/* Share reflection helper (lightweight CTA; hidden if no entries) */}
+      <div className="mt-3">
+        <ShareReflection />
+      </div>
+
+      {/* Journal editor (writing + photo + voice + sketch) */}
+      <JournalEditor
+        sections={sections}
+        addEntry={addEntry}
+        setToast={setToast}
+        setShowGlow={setShowGlow}
+      />
+    </div>
+  );
+}

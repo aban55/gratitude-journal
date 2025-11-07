@@ -29,13 +29,6 @@ const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
 const REMINDER_TIME_KEY = "gj_reminder_time";
 const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
 
-// Modals
-const [feedbackOpen, setFeedbackOpen] = useState(false);
-const [privacyOpen, setPrivacyOpen] = useState(false);   // if you already have these, keep just one copy
-const [termsOpen, setTermsOpen] = useState(false);       // ^
-const [aboutOpen, setAboutOpen] = useState(false);       // NEW
-
-
 // Local engagement keys (purely offline)
 const ENG_DAYS_KEY = "gj_days_with_entry"; // JSON array of date keys (yyyy-mm-dd) that have ≥1 entry
 const LONGEST_STREAK_KEY = "gj_longest_streak"; // cached longest streak (recomputed anyway)
@@ -536,61 +529,7 @@ function WelcomeModal({
             OK
           </button>
         </div>
-        function AboutModal({ open, onClose, onOpenPrivacy, onOpenTerms, appVersion, lastUpdated }) {
-  if (!open) return null;
-  return (
-    <div
-      className="fixed inset-0 z-[2100] bg-black/50 flex items-center justify-center"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
-        <h3 className="text-xl font-semibold mb-2">About Gratitude Journal</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Private by design. Your entries are stored locally, or in <i>your</i> Google Drive if you choose to sync.
-          We never see your journal content.
-        </p>
-
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
-          <div className="text-sm font-medium">Version</div>
-          <div className="text-sm">v{appVersion} • Updated {lastUpdated}</div>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          <button
-            className="w-full text-left underline underline-offset-4 hover:opacity-80"
-            onClick={() => { onClose(); onOpenPrivacy(); }}
-          >
-            Privacy Policy
-          </button>
-          <button
-            className="w-full text-left underline underline-offset-4 hover:opacity-80"
-            onClick={() => { onClose(); onOpenTerms(); }}
-          >
-            Terms of Use
-          </button>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-3 text-[11px] text-gray-500">
-          v{appVersion} • Updated {lastUpdated}
-        </div>
-      </div>
-    </div>
-  );
-}
-
       )}
-
 
 /* =========================
    Main App
@@ -956,41 +895,6 @@ useEffect(() => {
       {/* Toast */}
       <Toast message={toast} onClose={() => setToast("")} />
 
-<AboutModal
-  open={aboutOpen}
-  onClose={() => setAboutOpen(false)}
-  onOpenPrivacy={() => setPrivacyOpen(true)}
-  onOpenTerms={() => setTermsOpen(true)}
-  appVersion={APP_VERSION}
-  lastUpdated={LAST_UPDATED}
-/>
-
-{/* If you haven’t already added these modals, keep these simple placeholders or your full versions */}
-{privacyOpen && (
-  <div className="fixed inset-0 z-[2050] bg-black/50 flex items-center justify-center" onClick={(e)=>{if(e.target===e.currentTarget) setPrivacyOpen(false);}}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
-      <h3 className="text-lg font-semibold mb-2">Privacy Policy</h3>
-      <p className="text-sm text-gray-600 dark:text-gray-300">Your entries stay on your device. If you choose Drive sync, copies are stored in <i>your</i> Google Drive. We don’t collect journal content.</p>
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="px-3 py-2 rounded-md border" onClick={()=>setPrivacyOpen(false)}>Close</button>
-      </div>
-      <div className="mt-3 text-[11px] text-gray-500">v{APP_VERSION} • Updated {LAST_UPDATED}</div>
-    </div>
-  </div>
-)}
-{termsOpen && (
-  <div className="fixed inset-0 z-[2050] bg-black/50 flex items-center justify-center" onClick={(e)=>{if(e.target===e.currentTarget) setTermsOpen(false);}}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
-      <h3 className="text-lg font-semibold mb-2">Terms of Use</h3>
-      <p className="text-sm text-gray-600 dark:text-gray-300">This app is provided “as is” for personal journaling. No warranties; you’re responsible for your data backups/exports.</p>
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="px-3 py-2 rounded-md border" onClick={()=>setTermsOpen(false)}>Close</button>
-      </div>
-      <div className="mt-3 text-[11px] text-gray-500">v{APP_VERSION} • Updated {LAST_UPDATED}</div>
-    </div>
-  </div>
-)}
-
       {/* Feedback Modal */}
       <FeedbackModal
         open={feedbackOpen}
@@ -1215,7 +1119,6 @@ useEffect(() => {
         </div>
         <div className="flex gap-2 items-center">
           <Button variant="outline" onClick={() => setFeedbackOpen(true)}>💬 Feedback</Button>
-          <Button variant="outline" onClick={() => setAboutOpen(true)}>ℹ️ About</Button>   {/* NEW */}
           <InstallPrompt />
         </div>
       </div>

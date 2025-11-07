@@ -307,7 +307,7 @@ function FeedbackModal({ open, onClose, onSubmit }) {
 }
 
 /* =========================
-   Welcome Modal (2-Page with Progress + Slide Animations)
+   Welcome Modal (2-Page with Popups for Privacy & Terms)
 ========================= */
 function WelcomeModal({
   open,
@@ -320,7 +320,9 @@ function WelcomeModal({
   onReminderTime,
   onOpenFeedback,
 }) {
-  const [step, setStep] = useState(1); // 1 = intro, 2 = setup
+  const [step, setStep] = useState(1);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   if (!open) return null;
 
   return (
@@ -333,15 +335,15 @@ function WelcomeModal({
       aria-modal="true"
       role="dialog"
     >
+      {/* === MAIN MODAL CARD === */}
       <div className="mx-auto max-w-[640px] w-[92%] sm:w-[85%] bg-[#fbf5e6] text-amber-900 border border-amber-300 rounded-2xl shadow-2xl overflow-hidden parchment-bg relative">
         <div className="p-6 sm:p-8 overflow-y-auto max-h-[85vh] transition-all duration-300 ease-in-out">
-
           {/* Header */}
           <h2 className="text-3xl font-bold mb-2 flex items-center gap-2 text-amber-900">
             {returning ? "🌿 Welcome Back" : "🌿 Welcome to Your Gratitude Journal"}
           </h2>
 
-          {/* Progress Dots */}
+          {/* Progress dots */}
           <div className="flex justify-center items-center gap-2 mb-4 mt-2">
             {[1, 2].map((i) => (
               <div
@@ -444,15 +446,27 @@ function WelcomeModal({
                 Your journal data always stays private — stored locally or in <i>your own</i> Drive.
               </div>
 
+              {/* Footer Links trigger popups */}
               <div className="mt-3 text-[13px] text-center text-amber-900/80">
-                <a href="/privacy" className="underline hover:text-amber-900 mr-3">Privacy Policy</a>•
-                <a href="/terms" className="underline hover:text-amber-900 ml-3">Terms of Use</a>
+                <button
+                  onClick={() => setShowPrivacy(true)}
+                  className="underline hover:text-amber-900 mr-3"
+                >
+                  Privacy Policy
+                </button>
+                •
+                <button
+                  onClick={() => setShowTerms(true)}
+                  className="underline hover:text-amber-900 ml-3"
+                >
+                  Terms of Use
+                </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer Buttons */}
+        {/* Footer Navigation */}
         <div className="px-6 sm:px-8 py-4 border-t border-amber-200 bg-[#fbf5e6] flex justify-between gap-3 sticky bottom-0">
           {step === 1 ? (
             <>
@@ -489,6 +503,57 @@ function WelcomeModal({
           )}
         </div>
       </div>
+
+      {/* === POPUP MODALS === */}
+      {showPrivacy && (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
+          onClick={(e) => e.target === e.currentTarget && setShowPrivacy(false)}
+        >
+          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
+            <h3 className="text-xl font-semibold mb-2">Privacy Policy</h3>
+            <p className="text-sm leading-relaxed">
+              This app stores your gratitude entries only on your device.
+              If you connect Google Drive, data is synced to <i>your</i> Drive.
+              No personal data is collected, transmitted, or shared with any third party.
+            </p>
+            <div className="flex justify-end mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowPrivacy(false)}
+                className="border border-gray-300"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTerms && (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
+          onClick={(e) => e.target === e.currentTarget && setShowTerms(false)}
+        >
+          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
+            <h3 className="text-xl font-semibold mb-2">Terms of Use</h3>
+            <p className="text-sm leading-relaxed">
+              Gratitude Journal is provided for personal wellbeing and reflection.
+              By using the app, you agree to store entries responsibly and understand
+              that all journal data remains under your own account control.
+            </p>
+            <div className="flex justify-end mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowTerms(false)}
+                className="border border-gray-300"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

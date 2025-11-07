@@ -302,11 +302,6 @@ function FeedbackModal({ open, onClose, onSubmit }) {
             Submit
           </Button>
         </div>
-        
-        {/* Tiny version caption */}
-<div className="mt-3 text-[11px] text-gray-500">
-  v{APP_VERSION} • Updated {LAST_UPDATED}
-</div>
       </div>
     </div>
   );
@@ -326,8 +321,6 @@ function WelcomeModal({
   onReminderEnabled,
   onReminderTime,
   onOpenFeedback,
-  appVersion,         // NEW
-  lastUpdated,        // NEW
 }) {
   const [step, setStep] = useState(1);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -504,10 +497,10 @@ function WelcomeModal({
         </div>
 
         {/* Version Label */}
-<div className="absolute bottom-2 left-4 text-[11px] text-amber-700/70">
-  v{appVersion} • Updated {lastUpdated}
-</div>
-
+        <div className="absolute bottom-2 left-4 text-[11px] text-amber-700/70">
+          v2.1.0 • Updated Nov 2025
+        </div>
+      </div>
 
       {/* === Persistent Consent Banner === */}
       {showBanner && (
@@ -924,7 +917,7 @@ useEffect(() => {
         onReminderTime={(v) => setReminderTime(v)}
         onOpenFeedback={() => setFeedbackOpen(true)}
         appVersion={APP_VERSION}
-        lastUpdated={LAST_UPDATED}
+  lastUpdated={LAST_UPDATED}
       />
 
       {/* Header */}

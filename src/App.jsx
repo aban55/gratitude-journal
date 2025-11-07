@@ -437,6 +437,14 @@ function WelcomeModal({
                     Leave feedback →
                   </button>
                 </div>
+                {/* ⚠️ Add this new block below */}
+<div className="mt-3 text-[13px] text-amber-900/80 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+  <strong>🔒 Note on Google Sign-in:</strong>
+  If you see a message saying <i>“Google hasn’t verified this app”</i> — don’t worry.
+  This simply means the developer (abhishekbansal55@gmail.com) is still completing Google’s verification process.
+  You can safely continue by choosing <b>“Advanced → Go to Gratitude Journal (unsafe)”</b>.
+  Your journal data always stays private — stored locally or in <i>your own</i> Google Drive only.
+</div>
               </>
             ) : (
               <>

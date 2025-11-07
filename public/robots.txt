@@ -1,0 +1,7 @@
+# robots.txt for Gratitude Journal
+User-agent: *
+Allow: /
+
+Disallow: /api/
+
+Sitemap: https://gratitude-journal-iota.vercel.app/sitemap.xml

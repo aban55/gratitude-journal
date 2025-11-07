@@ -250,7 +250,10 @@
   to { opacity: 1; transform: scale(1); }
 }
 .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .parchment-bg {
   background: #fbf5e6;
   background-image: radial-gradient(

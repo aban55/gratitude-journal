@@ -16,6 +16,7 @@ const APP_VERSION = "1.1.0"; // bump when you ship
 const STORAGE_KEY = "gratitudeEntries";
 const THEME_KEY = "gj_theme";
 const WELCOME_KEY = "gj_seen_welcome";
+const RETURN_USER_KEY = "gj_return_user";
 const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
 const REMINDER_TIME_KEY = "gj_reminder_time";
 const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
@@ -305,6 +306,7 @@ function WelcomeModal({
   open,
   onClose,
   onStart,
+  returning = false,   // new prop
   reminderEnabled,
   reminderTime,
   onReminderEnabled,
@@ -331,20 +333,22 @@ function WelcomeModal({
 
           {/* Header (compact) */}
           <div className="px-5 pt-5 sm:px-8 sm:pt-8">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2">
-              🌿 Welcome to Your Gratitude Journal
+            <h2 className="text-3xl font-bold mb-3 flex items-center gap-2">
+            {returning ? "🌿 Welcome Back" : "🌿 Welcome to Your Gratitude Journal"}
             </h2>
+
           </div>
 
           {/* Body: scrollable on small screens */}
           <div className="px-5 sm:px-8 pb-4 overflow-y-auto">
             {!showAbout ? (
               <>
-                <p className="leading-relaxed text-[15px] sm:text-[15px]">
-                  Practising gratitude trains your mind to notice what’s going right.
-                  Even a few lines a day can improve mood, reduce stress, and build resilience.
-                  This app helps you build that habit—gently and consistently.
+                <p className="leading-relaxed text-[15px]">
+                {returning
+                ? "Good to see you again. Take a quiet moment today to reflect on what went right. Small steps make lasting calm."
+                : "Practising gratitude trains your mind to notice what’s going right. Even a few lines a day can improve mood, reduce stress, and build resilience. This app helps you build that habit—gently and consistently."}
                 </p>
+
 
                 <div className="mt-5">
                   <h3 className="font-semibold text-lg mb-2 text-amber-900">
@@ -398,10 +402,12 @@ function WelcomeModal({
                 <div className="mt-6 flex items-center justify-between">
                   <button
                     onClick={() => setShowAbout(true)}
-                    className="text-sm text-amber-700 underline hover:text-amber-900"
-                  >
-                    🪷 Why Gratitude Matters
-                  </button>
+                    className="text-base font-semibold text-amber-800 underline underline-offset-4 hover:text-amber-900 transition-all"
+                    style={{ fontSize: "1rem", textDecorationThickness: "2px" }}
+                    >
+                    🪷 Why Gratitude Matters →
+                    </button>
+
                   <div className="hidden sm:flex gap-3">
                     <Button variant="outline" onClick={onClose} className="bg-white border border-amber-300">
                       Maybe Later
@@ -506,7 +512,19 @@ export default function App() {
   const [editText, setEditText] = useState("");
   const [editMood, setEditMood] = useState(5);
 
-  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_KEY));
+  const seenBefore = localStorage.getItem(WELCOME_KEY);
+  const returning = localStorage.getItem(RETURN_USER_KEY);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [isReturning, setIsReturning] = useState(!!returning);
+
+  useEffect(() => {
+  // Always show a welcome screen, but mark returning visitors
+  if (seenBefore) {
+    setIsReturning(true);
+  }
+  setShowWelcome(true);
+}, []);
+
 
   // Reminder state
   const [reminderEnabled, setReminderEnabled] = useState(
@@ -855,10 +873,11 @@ useEffect(() => {
           localStorage.setItem(WELCOME_KEY, "1");
         }}
         onStart={() => {
-          setShowWelcome(false);
-          localStorage.setItem(WELCOME_KEY, "1");
-          setView("journal");
+        localStorage.setItem(WELCOME_KEY, "1");
+        localStorage.setItem(RETURN_USER_KEY, "1");
+        setShowWelcome(false);
         }}
+
         reminderEnabled={reminderEnabled}
         reminderTime={reminderTime}
         onReminderEnabled={(v) => setReminderEnabled(v)}

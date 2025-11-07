@@ -18,7 +18,8 @@ import Home from "./Home.jsx"; // your main component
 /* =========================
    Constants & Helpers
 ========================= */
-const APP_VERSION = "1.1.0"; // bump when you ship
+const APP_VERSION = "2.2.0"; // bump when you ship
+const LAST_UPDATED = "November 2025";
 const STORAGE_KEY = "gratitudeEntries";
 const THEME_KEY = "gj_theme";
 const RETURN_USER_KEY = "gj_return_user";
@@ -27,6 +28,13 @@ const WELCOME_KEY = "gj_seen_welcome";
 const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
 const REMINDER_TIME_KEY = "gj_reminder_time";
 const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
+
+// Modals
+const [feedbackOpen, setFeedbackOpen] = useState(false);
+const [privacyOpen, setPrivacyOpen] = useState(false);   // if you already have these, keep just one copy
+const [termsOpen, setTermsOpen] = useState(false);       // ^
+const [aboutOpen, setAboutOpen] = useState(false);       // NEW
+
 
 // Local engagement keys (purely offline)
 const ENG_DAYS_KEY = "gj_days_with_entry"; // JSON array of date keys (yyyy-mm-dd) that have ≥1 entry
@@ -301,13 +309,19 @@ function FeedbackModal({ open, onClose, onSubmit }) {
             Submit
           </Button>
         </div>
+        
+        {/* Tiny version caption */}
+<div className="mt-3 text-[11px] text-gray-500">
+  v{APP_VERSION} • Updated {LAST_UPDATED}
+</div>
       </div>
     </div>
   );
 }
 
 /* =========================
-   Welcome Modal (2-Page with Popups for Privacy & Terms)
+   Welcome Modal (Full Final Version)
+   - 2 Pages + Popups + Persistent Banner + Version Label
 ========================= */
 function WelcomeModal({
   open,
@@ -319,10 +333,25 @@ function WelcomeModal({
   onReminderEnabled,
   onReminderTime,
   onOpenFeedback,
+  appVersion,         // NEW
+  lastUpdated,        // NEW
 }) {
   const [step, setStep] = useState(1);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+
+  // Show banner only once (persistent consent)
+  useEffect(() => {
+    const dismissed = localStorage.getItem("bannerDismissed");
+    if (!dismissed) setShowBanner(true);
+  }, []);
+
+  const handleBannerDismiss = () => {
+    setShowBanner(false);
+    localStorage.setItem("bannerDismissed", "true");
+  };
+
   if (!open) return null;
 
   return (
@@ -335,15 +364,14 @@ function WelcomeModal({
       aria-modal="true"
       role="dialog"
     >
-      {/* === MAIN MODAL CARD === */}
+      {/* === MAIN CARD === */}
       <div className="mx-auto max-w-[640px] w-[92%] sm:w-[85%] bg-[#fbf5e6] text-amber-900 border border-amber-300 rounded-2xl shadow-2xl overflow-hidden parchment-bg relative">
         <div className="p-6 sm:p-8 overflow-y-auto max-h-[85vh] transition-all duration-300 ease-in-out">
-          {/* Header */}
           <h2 className="text-3xl font-bold mb-2 flex items-center gap-2 text-amber-900">
             {returning ? "🌿 Welcome Back" : "🌿 Welcome to Your Gratitude Journal"}
           </h2>
 
-          {/* Progress dots */}
+          {/* Progress Dots */}
           <div className="flex justify-center items-center gap-2 mb-4 mt-2">
             {[1, 2].map((i) => (
               <div
@@ -355,7 +383,7 @@ function WelcomeModal({
             ))}
           </div>
 
-          {/* STEP 1 */}
+          {/* === STEP 1 === */}
           {step === 1 && (
             <div key="step1" className="animate-slideInLeft">
               <p className="leading-relaxed text-[15px] mb-4">
@@ -380,7 +408,7 @@ function WelcomeModal({
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[15px]">
                   <li>Reduce stress and overthinking.</li>
-                  <li>Improve sleep and balance.</li>
+                  <li>Improve sleep and emotional balance.</li>
                   <li>Strengthen relationships through empathy.</li>
                   <li>Rewire your brain to notice positives naturally.</li>
                 </ul>
@@ -388,7 +416,7 @@ function WelcomeModal({
             </div>
           )}
 
-          {/* STEP 2 */}
+          {/* === STEP 2 === */}
           {step === 2 && (
             <div key="step2" className="animate-slideInRight">
               <h3 className="text-2xl font-bold mb-3">🌞 Build Your Daily Habit</h3>
@@ -421,10 +449,10 @@ function WelcomeModal({
                 </label>
               </div>
 
-              <div className="text-[13px] text-amber-700 mb-5">
+              <p className="text-[13px] text-amber-700 mb-5">
                 You’ll get a gentle nudge at your chosen time. If notifications are blocked,
                 an in-app alert appears instead.
-              </div>
+              </p>
 
               <div className="text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 leading-relaxed mb-3">
                 <strong>Private by design.</strong> Your journal entries are stored only on your device.
@@ -446,19 +474,12 @@ function WelcomeModal({
                 Your journal data always stays private — stored locally or in <i>your own</i> Drive.
               </div>
 
-              {/* Footer Links trigger popups */}
               <div className="mt-3 text-[13px] text-center text-amber-900/80">
-                <button
-                  onClick={() => setShowPrivacy(true)}
-                  className="underline hover:text-amber-900 mr-3"
-                >
+                <button onClick={() => setShowPrivacy(true)} className="underline hover:text-amber-900 mr-3">
                   Privacy Policy
                 </button>
                 •
-                <button
-                  onClick={() => setShowTerms(true)}
-                  className="underline hover:text-amber-900 ml-3"
-                >
+                <button onClick={() => setShowTerms(true)} className="underline hover:text-amber-900 ml-3">
                   Terms of Use
                 </button>
               </div>
@@ -466,94 +487,106 @@ function WelcomeModal({
           )}
         </div>
 
-        {/* Footer Navigation */}
+        {/* Footer Buttons */}
         <div className="px-6 sm:px-8 py-4 border-t border-amber-200 bg-[#fbf5e6] flex justify-between gap-3 sticky bottom-0">
           {step === 1 ? (
             <>
-              <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1 bg-white border border-amber-300 h-12 text-base"
-              >
+              <Button variant="outline" onClick={onClose} className="flex-1 bg-white border border-amber-300 h-12 text-base">
                 Maybe Later
               </Button>
-              <Button
-                onClick={() => setStep(2)}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base"
-              >
+              <Button onClick={() => setStep(2)} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base">
                 Next →
               </Button>
             </>
           ) : (
             <>
-              <Button
-                variant="outline"
-                onClick={() => setStep(1)}
-                className="flex-1 bg-white border border-amber-300 h-12 text-base"
-              >
+              <Button variant="outline" onClick={() => setStep(1)} className="flex-1 bg-white border border-amber-300 h-12 text-base">
                 ← Back
               </Button>
-              <Button
-                onClick={onStart}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base"
-              >
+              <Button onClick={onStart} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base">
                 Start Journaling
               </Button>
             </>
           )}
         </div>
+
+        {/* Version Label */}
+<div className="absolute bottom-2 left-4 text-[11px] text-amber-700/70">
+  v{appVersion} • Updated {lastUpdated}
+</div>
+
+
+      {/* === Persistent Consent Banner === */}
+      {showBanner && (
+        <div className="fixed bottom-0 z-[998] w-full bg-amber-50 border-t border-amber-200 text-amber-900 text-center py-3 px-6 text-[13px] shadow-sm animate-fadeIn">
+          <span>
+            By continuing, you agree to our{" "}
+            <button onClick={() => setShowPrivacy(true)} className="underline hover:text-amber-700">
+              Privacy Policy
+            </button>{" "}
+            and{" "}
+            <button onClick={() => setShowTerms(true)} className="underline hover:text-amber-700">
+              Terms of Use
+            </button>.
+          </span>
+          <button
+            onClick={handleBannerDismiss}
+            className="ml-4 text-xs bg-amber-600 text-white rounded-md px-3 py-1 hover:bg-amber-700"
+          >
+            OK
+          </button>
+        </div>
+      )}
+
+function AboutModal({ open, onClose, onOpenPrivacy, onOpenTerms, appVersion, lastUpdated }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[2100] bg-black/50 flex items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
+        <h3 className="text-xl font-semibold mb-2">About Gratitude Journal</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Private by design. Your entries are stored locally, or in <i>your</i> Google Drive if you choose to sync.
+          We never see your journal content.
+        </p>
+
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+          <div className="text-sm font-medium">Version</div>
+          <div className="text-sm">v{appVersion} • Updated {lastUpdated}</div>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <button
+            className="w-full text-left underline underline-offset-4 hover:opacity-80"
+            onClick={() => { onClose(); onOpenPrivacy(); }}
+          >
+            Privacy Policy
+          </button>
+          <button
+            className="w-full text-left underline underline-offset-4 hover:opacity-80"
+            onClick={() => { onClose(); onOpenTerms(); }}
+          >
+            Terms of Use
+          </button>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-3 text-[11px] text-gray-500">
+          v{appVersion} • Updated {lastUpdated}
+        </div>
       </div>
-
-      {/* === POPUP MODALS === */}
-      {showPrivacy && (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
-          onClick={(e) => e.target === e.currentTarget && setShowPrivacy(false)}
-        >
-          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
-            <h3 className="text-xl font-semibold mb-2">Privacy Policy</h3>
-            <p className="text-sm leading-relaxed">
-              This app stores your gratitude entries only on your device.
-              If you connect Google Drive, data is synced to <i>your</i> Drive.
-              No personal data is collected, transmitted, or shared with any third party.
-            </p>
-            <div className="flex justify-end mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowPrivacy(false)}
-                className="border border-gray-300"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showTerms && (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
-          onClick={(e) => e.target === e.currentTarget && setShowTerms(false)}
-        >
-          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
-            <h3 className="text-xl font-semibold mb-2">Terms of Use</h3>
-            <p className="text-sm leading-relaxed">
-              Gratitude Journal is provided for personal wellbeing and reflection.
-              By using the app, you agree to store entries responsibly and understand
-              that all journal data remains under your own account control.
-            </p>
-            <div className="flex justify-end mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowTerms(false)}
-                className="border border-gray-300"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -922,6 +955,41 @@ useEffect(() => {
       {/* Toast */}
       <Toast message={toast} onClose={() => setToast("")} />
 
+<AboutModal
+  open={aboutOpen}
+  onClose={() => setAboutOpen(false)}
+  onOpenPrivacy={() => setPrivacyOpen(true)}
+  onOpenTerms={() => setTermsOpen(true)}
+  appVersion={APP_VERSION}
+  lastUpdated={LAST_UPDATED}
+/>
+
+{/* If you haven’t already added these modals, keep these simple placeholders or your full versions */}
+{privacyOpen && (
+  <div className="fixed inset-0 z-[2050] bg-black/50 flex items-center justify-center" onClick={(e)=>{if(e.target===e.currentTarget) setPrivacyOpen(false);}}>
+    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
+      <h3 className="text-lg font-semibold mb-2">Privacy Policy</h3>
+      <p className="text-sm text-gray-600 dark:text-gray-300">Your entries stay on your device. If you choose Drive sync, copies are stored in <i>your</i> Google Drive. We don’t collect journal content.</p>
+      <div className="mt-4 flex justify-end gap-2">
+        <button className="px-3 py-2 rounded-md border" onClick={()=>setPrivacyOpen(false)}>Close</button>
+      </div>
+      <div className="mt-3 text-[11px] text-gray-500">v{APP_VERSION} • Updated {LAST_UPDATED}</div>
+    </div>
+  </div>
+)}
+{termsOpen && (
+  <div className="fixed inset-0 z-[2050] bg-black/50 flex items-center justify-center" onClick={(e)=>{if(e.target===e.currentTarget) setTermsOpen(false);}}>
+    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[92%] max-w-md p-5">
+      <h3 className="text-lg font-semibold mb-2">Terms of Use</h3>
+      <p className="text-sm text-gray-600 dark:text-gray-300">This app is provided “as is” for personal journaling. No warranties; you’re responsible for your data backups/exports.</p>
+      <div className="mt-4 flex justify-end gap-2">
+        <button className="px-3 py-2 rounded-md border" onClick={()=>setTermsOpen(false)}>Close</button>
+      </div>
+      <div className="mt-3 text-[11px] text-gray-500">v{APP_VERSION} • Updated {LAST_UPDATED}</div>
+    </div>
+  </div>
+)}
+
       {/* Feedback Modal */}
       <FeedbackModal
         open={feedbackOpen}
@@ -950,6 +1018,8 @@ useEffect(() => {
         onReminderEnabled={(v) => setReminderEnabled(v)}
         onReminderTime={(v) => setReminderTime(v)}
         onOpenFeedback={() => setFeedbackOpen(true)}
+        appVersion={APP_VERSION}
+        lastUpdated={LAST_UPDATED}
       />
 
       {/* Header */}
@@ -1144,6 +1214,7 @@ useEffect(() => {
         </div>
         <div className="flex gap-2 items-center">
           <Button variant="outline" onClick={() => setFeedbackOpen(true)}>💬 Feedback</Button>
+          <Button variant="outline" onClick={() => setAboutOpen(true)}>ℹ️ About</Button>   {/* NEW */}
           <InstallPrompt />
         </div>
       </div>

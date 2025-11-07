@@ -307,7 +307,7 @@ function FeedbackModal({ open, onClose, onSubmit }) {
 }
 
 /* =========================
-   Welcome Modal (2-Page with Popups for Privacy & Terms)
+   Welcome Modal (2-Page + Popups + Persistent Consent Banner)
 ========================= */
 function WelcomeModal({
   open,
@@ -323,6 +323,19 @@ function WelcomeModal({
   const [step, setStep] = useState(1);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+
+  // Show banner only if not dismissed before
+  useEffect(() => {
+    const dismissed = localStorage.getItem("bannerDismissed");
+    if (!dismissed) setShowBanner(true);
+  }, []);
+
+  const handleBannerDismiss = () => {
+    setShowBanner(false);
+    localStorage.setItem("bannerDismissed", "true");
+  };
+
   if (!open) return null;
 
   return (
@@ -335,15 +348,14 @@ function WelcomeModal({
       aria-modal="true"
       role="dialog"
     >
-      {/* === MAIN MODAL CARD === */}
+      {/* === MAIN CARD === */}
       <div className="mx-auto max-w-[640px] w-[92%] sm:w-[85%] bg-[#fbf5e6] text-amber-900 border border-amber-300 rounded-2xl shadow-2xl overflow-hidden parchment-bg relative">
         <div className="p-6 sm:p-8 overflow-y-auto max-h-[85vh] transition-all duration-300 ease-in-out">
-          {/* Header */}
           <h2 className="text-3xl font-bold mb-2 flex items-center gap-2 text-amber-900">
             {returning ? "🌿 Welcome Back" : "🌿 Welcome to Your Gratitude Journal"}
           </h2>
 
-          {/* Progress dots */}
+          {/* Progress Dots */}
           <div className="flex justify-center items-center gap-2 mb-4 mt-2">
             {[1, 2].map((i) => (
               <div
@@ -380,7 +392,7 @@ function WelcomeModal({
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[15px]">
                   <li>Reduce stress and overthinking.</li>
-                  <li>Improve sleep and balance.</li>
+                  <li>Improve sleep and emotional balance.</li>
                   <li>Strengthen relationships through empathy.</li>
                   <li>Rewire your brain to notice positives naturally.</li>
                 </ul>
@@ -421,10 +433,10 @@ function WelcomeModal({
                 </label>
               </div>
 
-              <div className="text-[13px] text-amber-700 mb-5">
+              <p className="text-[13px] text-amber-700 mb-5">
                 You’ll get a gentle nudge at your chosen time. If notifications are blocked,
                 an in-app alert appears instead.
-              </div>
+              </p>
 
               <div className="text-[14px] p-3 rounded-lg bg-amber-50 border border-amber-200 leading-relaxed mb-3">
                 <strong>Private by design.</strong> Your journal entries are stored only on your device.
@@ -446,19 +458,12 @@ function WelcomeModal({
                 Your journal data always stays private — stored locally or in <i>your own</i> Drive.
               </div>
 
-              {/* Footer Links trigger popups */}
               <div className="mt-3 text-[13px] text-center text-amber-900/80">
-                <button
-                  onClick={() => setShowPrivacy(true)}
-                  className="underline hover:text-amber-900 mr-3"
-                >
+                <button onClick={() => setShowPrivacy(true)} className="underline hover:text-amber-900 mr-3">
                   Privacy Policy
                 </button>
                 •
-                <button
-                  onClick={() => setShowTerms(true)}
-                  className="underline hover:text-amber-900 ml-3"
-                >
+                <button onClick={() => setShowTerms(true)} className="underline hover:text-amber-900 ml-3">
                   Terms of Use
                 </button>
               </div>
@@ -466,37 +471,23 @@ function WelcomeModal({
           )}
         </div>
 
-        {/* Footer Navigation */}
+        {/* Footer Buttons */}
         <div className="px-6 sm:px-8 py-4 border-t border-amber-200 bg-[#fbf5e6] flex justify-between gap-3 sticky bottom-0">
           {step === 1 ? (
             <>
-              <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1 bg-white border border-amber-300 h-12 text-base"
-              >
+              <Button variant="outline" onClick={onClose} className="flex-1 bg-white border border-amber-300 h-12 text-base">
                 Maybe Later
               </Button>
-              <Button
-                onClick={() => setStep(2)}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base"
-              >
+              <Button onClick={() => setStep(2)} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base">
                 Next →
               </Button>
             </>
           ) : (
             <>
-              <Button
-                variant="outline"
-                onClick={() => setStep(1)}
-                className="flex-1 bg-white border border-amber-300 h-12 text-base"
-              >
+              <Button variant="outline" onClick={() => setStep(1)} className="flex-1 bg-white border border-amber-300 h-12 text-base">
                 ← Back
               </Button>
-              <Button
-                onClick={onStart}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base"
-              >
+              <Button onClick={onStart} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-12 text-base">
                 Start Journaling
               </Button>
             </>
@@ -504,59 +495,27 @@ function WelcomeModal({
         </div>
       </div>
 
-      {/* === POPUP MODALS === */}
-      {showPrivacy && (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
-          onClick={(e) => e.target === e.currentTarget && setShowPrivacy(false)}
-        >
-          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
-            <h3 className="text-xl font-semibold mb-2">Privacy Policy</h3>
-            <p className="text-sm leading-relaxed">
-              This app stores your gratitude entries only on your device.
-              If you connect Google Drive, data is synced to <i>your</i> Drive.
-              No personal data is collected, transmitted, or shared with any third party.
-            </p>
-            <div className="flex justify-end mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowPrivacy(false)}
-                className="border border-gray-300"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
+      {/* === Persistent Consent Banner === */}
+      {showBanner && (
+        <div className="fixed bottom-0 z-[998] w-full bg-amber-50 border-t border-amber-200 text-amber-900 text-center py-3 px-6 text-[13px] shadow-sm animate-fadeIn">
+          <span>
+            By continuing, you agree to our{" "}
+            <button onClick={() => setShowPrivacy(true)} className="underline hover:text-amber-700">
+              Privacy Policy
+            </button>{" "}
+            and{" "}
+            <button onClick={() => setShowTerms(true)} className="underline hover:text-amber-700">
+              Terms of Use
+            </button>.
+          </span>
+          <button
+            onClick={handleBannerDismiss}
+            className="ml-4 text-xs bg-amber-600 text-white rounded-md px-3 py-1 hover:bg-amber-700"
+          >
+            OK
+          </button>
         </div>
       )}
-
-      {showTerms && (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center"
-          onClick={(e) => e.target === e.currentTarget && setShowTerms(false)}
-        >
-          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-fadeIn">
-            <h3 className="text-xl font-semibold mb-2">Terms of Use</h3>
-            <p className="text-sm leading-relaxed">
-              Gratitude Journal is provided for personal wellbeing and reflection.
-              By using the app, you agree to store entries responsibly and understand
-              that all journal data remains under your own account control.
-            </p>
-            <div className="flex justify-end mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowTerms(false)}
-                className="border border-gray-300"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* =========================
    Main App

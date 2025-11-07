@@ -15,8 +15,9 @@ import jsPDF from "jspdf";
 const APP_VERSION = "1.1.0"; // bump when you ship
 const STORAGE_KEY = "gratitudeEntries";
 const THEME_KEY = "gj_theme";
-const WELCOME_KEY = "gj_seen_welcome";
 const RETURN_USER_KEY = "gj_return_user";
+const WELCOME_KEY = "gj_seen_welcome";
+
 const REMINDER_ENABLED_KEY = "gj_reminder_enabled";
 const REMINDER_TIME_KEY = "gj_reminder_time";
 const REMINDER_LAST_SENT_KEY = "gj_reminder_last_sent"; // YYYY-MM-DD
@@ -868,14 +869,17 @@ useEffect(() => {
       {/* Welcome Overlay */}
       <WelcomeModal
         open={showWelcome}
+        returning={isReturning}
         onClose={() => {
           setShowWelcome(false);
           localStorage.setItem(WELCOME_KEY, "1");
+          localStorage.setItem(RETURN_USER_KEY, "1");
         }}
         onStart={() => {
+        setShowWelcome(false);
         localStorage.setItem(WELCOME_KEY, "1");
         localStorage.setItem(RETURN_USER_KEY, "1");
-        setShowWelcome(false);
+        setView("journal");
         }}
 
         reminderEnabled={reminderEnabled}

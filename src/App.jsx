@@ -529,6 +529,34 @@ export default function App() {
     avgMood7d: 0,
   });
 
+// App.jsx (inside the App() component, once)
+useEffect(() => {
+  if (!("serviceWorker" in navigator)) return;
+
+  // If there's a waiting SW (new build), tell it to activate now
+  navigator.serviceWorker.getRegistration().then((reg) => {
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+  });
+
+  // Listen for the SW telling us a new version is ready
+  const onMessage = (event) => {
+    if (event.data?.type === "NEW_VERSION_READY") {
+      // optional: show a toast first
+      setToast("✨ New version installed. Reloading…");
+      setTimeout(() => {
+        // hard reload to pick up fresh assets
+        window.location.reload(true);
+      }, 800);
+    }
+  };
+
+  navigator.serviceWorker.addEventListener("message", onMessage);
+  return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+}, []);
+
+
   // Load local + theme
   useEffect(() => {
     const s = localStorage.getItem(STORAGE_KEY);

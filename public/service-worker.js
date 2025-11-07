@@ -1,58 +1,84 @@
 // --- Gratitude Journal Service Worker ---
-// v2: with Background Sync + Auto-update
+// v3: auto-update & safe cache invalidation
 
-const CACHE_NAME = "gratitude-journal-v2";
+const APP_VERSION = "v3.0.0";  // bump this for each deploy
+const CACHE_NAME = `gratitude-journal-${APP_VERSION}`;
 const OFFLINE_URLS = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
-// Install: cache core assets
+// INSTALL — Cache core assets and activate immediately
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing new version");
+  console.log(`[SW] Installing ${APP_VERSION}`);
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(OFFLINE_URLS))
   );
-  self.skipWaiting();
+  self.skipWaiting(); // activate new SW immediately
 });
 
-// Activate: cleanup old caches
+// ACTIVATE — Cleanup old caches and take control of clients
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating");
+  console.log(`[SW] Activating ${APP_VERSION}`);
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => k !== CACHE_NAME && caches.delete(k)))
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            console.log("[SW] Removing old cache:", key);
+            return caches.delete(key);
+          }
+        })
+      )
     )
   );
   self.clients.claim();
 });
 
-// Fetch: serve from cache first, fallback to network
+// FETCH — Cache-first, then network fallback
 self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") return; // don’t intercept POST, etc.
+
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request)
-          .then((resp) => {
-            if (
-              event.request.method === "GET" &&
-              resp.status === 200 &&
-              resp.type === "basic"
-            ) {
-              const clone = resp.clone();
-              caches.open(CACHE_NAME).then((cache) =>
-                cache.put(event.request, clone)
-              );
-            }
-            return resp;
-          })
-          .catch(() => cached || new Response("Offline", { status: 503 }))
-    )
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+
+      return fetch(request)
+        .then((response) => {
+          // Cache only successful same-origin GET responses
+          if (
+            response.status === 200 &&
+            response.type === "basic" &&
+            request.url.startsWith(self.location.origin)
+          ) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => cachedResponse || new Response("Offline", { status: 503 }));
+    })
   );
 });
 
-// --- Background Sync for Drive Backup ---
+// AUTO-UPDATE NOTIFICATION — tell client when a new SW activates
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+// OPTIONAL: notify clients of new version so UI can show “Reload for update”
+self.addEventListener("statechange", () => {
+  self.clients.matchAll().then((clients) => {
+    clients.forEach((client) =>
+      client.postMessage({ type: "NEW_VERSION_READY", version: APP_VERSION })
+    );
+  });
+});
+
+// --- Background Sync (optional) ---
 self.addEventListener("sync", (event) => {
   if (event.tag === "sync-gratitude-data") {
-    console.log("[SW] Running background sync for Google Drive backup...");
+    console.log("[SW] Background sync triggered");
     event.waitUntil(syncToDrive());
   }
 });
@@ -60,35 +86,24 @@ self.addEventListener("sync", (event) => {
 async function syncToDrive() {
   try {
     const clientsArr = await self.clients.matchAll();
-    clientsArr.forEach((client) =>
-      client.postMessage({ type: "SYNC_START" })
-    );
+    clientsArr.forEach((client) => client.postMessage({ type: "SYNC_START" }));
 
-    // Pull latest local data
     const cache = await caches.open(CACHE_NAME);
     const response = await cache.match("/backup-data.json");
     if (!response) return;
     const data = await response.json();
 
-    // Upload to Google Drive (requires online + valid auth token)
-    const tokenCache = await caches.match("/gapi-token.json");
+    const tokenCache = await cache.match("/gapi-token.json");
     if (!tokenCache) return;
     const { access_token } = await tokenCache.json();
 
-    await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + access_token,
-        },
-        body: JSON.stringify(data),
-      }
-    );
+    await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + access_token },
+      body: JSON.stringify(data),
+    });
 
-    clientsArr.forEach((client) =>
-      client.postMessage({ type: "SYNC_DONE" })
-    );
+    clientsArr.forEach((client) => client.postMessage({ type: "SYNC_DONE" }));
   } catch (err) {
     console.error("[SW] Sync failed:", err);
   }

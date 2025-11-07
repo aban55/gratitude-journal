@@ -536,9 +536,7 @@ function WelcomeModal({
             OK
           </button>
         </div>
-      )}
-
-function AboutModal({ open, onClose, onOpenPrivacy, onOpenTerms, appVersion, lastUpdated }) {
+        function AboutModal({ open, onClose, onOpenPrivacy, onOpenTerms, appVersion, lastUpdated }) {
   if (!open) return null;
   return (
     <div
@@ -590,6 +588,9 @@ function AboutModal({ open, onClose, onOpenPrivacy, onOpenTerms, appVersion, las
     </div>
   );
 }
+
+      )}
+
 
 /* =========================
    Main App

@@ -205,6 +205,64 @@ function Toast({ message, onClose }) {
 }
 
 /* =========================
+   Saved Glow (tiny toast)
+========================= */
+// --- ADDITION: Tiny SavedGlow component (exactly as requested) ---
+function SavedGlow({ visible }) {
+  if (!visible) return null;
+  return (
+    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[1200]">
+      <div
+        className="px-4 py-2 rounded-full shadow-lg border border-amber-300 bg-amber-100 text-amber-800 text-sm font-medium"
+        style={{ animation: "fadePulse 1.6s ease-in-out" }}
+      >
+        🌿 Saved successfully
+      </div>
+      <style>{`
+        @keyframes fadePulse {
+          0% { opacity: 0; transform: translate(-50%, 8px) scale(0.96); }
+          20% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -6px) scale(0.98); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* =========================
+   First Entry Prompt Modal
+========================= */
+// --- ADDITION: FirstEntryPrompt component (exactly as requested) ---
+function FirstEntryPrompt({ open, onClose, onStart }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[1500] bg-black/50 flex items-center justify-center"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-[#fbf5e6] text-amber-900 rounded-2xl shadow-2xl w-[90%] max-w-md p-6 border border-amber-300">
+        <h2 className="text-2xl font-bold mb-2 text-center">🌞 Your First Entry</h2>
+        <p className="text-[15px] text-center leading-relaxed mb-5">
+          Start with something simple — <strong>What made you smile today?</strong>
+        </p>
+        <div className="flex justify-center gap-2">
+          <Button
+            onClick={onStart}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-5"
+          >
+            Start Writing
+          </Button>
+          <Button variant="outline" onClick={onClose} className="border border-amber-300 bg-white">
+            Later
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
    Feedback Modal (Fixed)
 ========================= */
 function FeedbackModal({ open, onClose, onSubmit }) {
@@ -611,6 +669,10 @@ export default function App() {
     avgMood7d: 0,
   });
 
+  // --- ADDITION: First-entry modal state + SavedGlow state (exactly as requested)
+  const [firstPromptOpen, setFirstPromptOpen] = useState(false);   // NEW
+  const [showSavedGlow, setShowSavedGlow] = useState(false);       // NEW
+
 // App.jsx (inside the App() component, once)
 useEffect(() => {
   if (!("serviceWorker" in navigator)) return;
@@ -697,6 +759,17 @@ useEffect(() => {
     setQuestion(randomQuestion);
     setToast("🌼 Fresh prompt loaded!");
     const t = setTimeout(() => setToast(""), 2000);
+
+    // --- ADDITION (Optional but recommended): seed smile prompt on absolutely first run
+    try {
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      const seen = localStorage.getItem(WELCOME_KEY) === "1";
+      if ((!s || s.length === 0) && !seen) {
+        setSection("Perspective & Hope");
+        setQuestion("What made you smile today?");
+      }
+    } catch {}
+
     return () => clearTimeout(t);
   }, []);
 
@@ -765,6 +838,10 @@ useEffect(() => {
     setEntry("");
     setQuestion("");
     setMood(5);
+
+    // --- ADDITION: SavedGlow trigger (exactly as requested)
+    setShowSavedGlow(true);
+    setTimeout(() => setShowSavedGlow(false), 1600);
   }
 
   /* Edit/Delete */
@@ -922,6 +999,21 @@ useEffect(() => {
       {/* Toast */}
       <Toast message={toast} onClose={() => setToast("")} />
 
+      {/* --- ADDITION: New overlays right below Toast --- */}
+      <SavedGlow visible={showSavedGlow} />
+      <FirstEntryPrompt
+        open={firstPromptOpen}
+        onClose={() => setFirstPromptOpen(false)}
+        onStart={() => {
+          // Seed a friendly question and jump to Journal
+          const starter = "What made you smile today?";
+          setSection("Perspective & Hope"); // any section is fine
+          setQuestion(starter);
+          setView("journal");
+          setFirstPromptOpen(false);
+        }}
+      />
+
       {/* Feedback Modal */}
       <FeedbackModal
         open={feedbackOpen}
@@ -933,16 +1025,34 @@ useEffect(() => {
       <WelcomeModal
         open={showWelcome}
         returning={isReturning}
+
+        // --- MODIFIED CALLBACK (per your spec) ---
         onClose={() => {
           setShowWelcome(false);
           localStorage.setItem(WELCOME_KEY, "1");
           localStorage.setItem(RETURN_USER_KEY, "1");
+          // If truly first time and no entries → show First Entry Prompt
+          try {
+            const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            if (!s || s.length === 0) setFirstPromptOpen(true);
+          } catch {
+            setFirstPromptOpen(true);
+          }
         }}
+
+        // --- MODIFIED CALLBACK (per your spec) ---
         onStart={() => {
-        setShowWelcome(false);
-        localStorage.setItem(WELCOME_KEY, "1");
-        localStorage.setItem(RETURN_USER_KEY, "1");
-        setView("journal");
+          setShowWelcome(false);
+          localStorage.setItem(WELCOME_KEY, "1");
+          localStorage.setItem(RETURN_USER_KEY, "1");
+          setView("journal");
+          // Immediately encourage the first entry if empty
+          try {
+            const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            if (!s || s.length === 0) setFirstPromptOpen(true);
+          } catch {
+            setFirstPromptOpen(true);
+          }
         }}
 
         reminderEnabled={reminderEnabled}
@@ -953,8 +1063,19 @@ useEffect(() => {
       />
 
       {/* Header */}
+      {/* --- MODIFIED: Add the Streak + This Week line under the title (right side unchanged) --- */}
       <header className="flex justify-between items-center mb-2">
-        <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
+        <div>
+          <h1 className="text-3xl font-bold">🌿 Daily Gratitude Journal</h1>
+          <div className="text-sm text-amber-800/90 mt-1">
+            {stats.currentStreak > 0 ? (
+              <span>🔥 {stats.currentStreak}-day streak • You journaled {stats.entriesThisWeek} days this week 🌞</span>
+            ) : (
+              <span>Start your first gratitude note today ✨</span>
+            )}
+          </div>
+        </div>
+        {/* right-side buttons remain exactly as you have them */}
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setFeedbackOpen(true)}>💬 Feedback</Button>
           <Button
@@ -969,6 +1090,7 @@ useEffect(() => {
           </Button>
         </div>
       </header>
+
       <p className="text-center text-amber-800/90 italic text-[17px] sm:text-lg mt-1 mb-5 tracking-wide font-serif drop-shadow-sm">
   “{quote}”
 </p>

@@ -572,12 +572,39 @@ function WelcomeModal({
           onClick={(e) => e.target === e.currentTarget && setShowPrivacy(false)}
         >
           <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-[fadeIn_.2s_ease]">
-            <h3 className="text-xl font-semibold mb-2">Privacy Policy</h3>
-            <p className="text-sm leading-relaxed">
-              This app stores your gratitude entries only on your device.
-              If you connect Google Drive, data is synced to <i>your</i> Drive.
-              No personal data is collected, transmitted, or shared with any third party.
-            </p>
+            <h3 className="text-xl font-semibold mb-2">License & Privacy Policy</h3>
+            <p className="mb-3 text-sm leading-relaxed">
+        This application was created and shared freely, with no expectation of financial
+        return or personal gain. It is intended solely to help users reflect, express
+        gratitude, and build mindfulness in daily life.
+      </p>
+
+      <p className="mb-3 text-sm leading-relaxed">
+        The app and its source code are proprietary and confidential. Redistribution,
+        modification, or reuse of the code, design, or assets is not permitted without
+        written consent. Reverse engineering or copying significant portions of this
+        project for public or commercial use is strictly prohibited.
+      </p>
+
+      <p className="mb-3 text-sm leading-relaxed">
+        The app is completely free to use. No advertising, tracking, or monetization
+        systems are integrated. All journal entries remain stored locally on your
+        device. If you choose to enable cloud syncing (e.g., Google Drive), your data
+        is stored only under your own account — never shared or accessed by the
+        developer.
+      </p>
+
+      <p className="mb-3 text-sm leading-relaxed">
+        No personal data is collected, transmitted, or sold. Usage is anonymous, and
+        feedback (if you submit it) contains only voluntary comments, never journal
+        content.
+      </p>
+
+      <p className="mt-6 text-xs text-gray-500 italic">
+        © 2025. All rights reserved.
+        Provided freely for personal, non-commercial use.
+        Redistribution or reuse requires prior permission.
+      </p>
             <div className="flex justify-end mt-4">
               <Button
                 variant="outline"
@@ -598,11 +625,28 @@ function WelcomeModal({
         >
           <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-2xl shadow-2xl w-[90%] max-w-lg p-6 space-y-3 animate-[fadeIn_.2s_ease]">
             <h3 className="text-xl font-semibold mb-2">Terms of Use</h3>
-            <p className="text-sm leading-relaxed">
-              Gratitude Journal is provided for personal wellbeing and reflection.
-              By using the app, you agree to store entries responsibly and understand
-              that all journal data remains under your own account control.
-            </p>
+            <p className="mb-3 text-sm text-gray-700">
+        This application is provided for personal wellbeing and reflection. It is provided
+        free of charge and without any expectation of financial return.
+      </p>
+
+      <p className="mb-3 text-sm text-gray-700">
+        By using this app you agree not to redistribute, republish, or reuse the code,
+        design, or assets for commercial purposes without prior written permission from
+        the developer. Reverse-engineering, rehosting, or copying significant parts of
+        this app for distribution is not permitted.
+      </p>
+
+      <p className="mb-3 text-sm text-gray-700">
+        Your journal entries are stored locally on your device. If you enable syncing,
+        a copy may be stored in your own cloud storage (e.g., Google Drive). No personal
+        content is collected or accessed by third parties without your explicit consent.
+      </p>
+
+      <p className="text-xs text-gray-500 mt-6">
+        If you need a licence for reuse, please contact the developer through the
+        project's official channels.
+      </p>
             <div className="flex justify-end mt-4">
               <Button
                 variant="outline"

@@ -32,6 +32,7 @@ import ShareReflection from "./components/Enhancements/ShareReflection.jsx";
 
 // === Recharts Sparkline ===
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import useAnalytics from "./hooks/useAnalytics.js";
 
 // === Mount App ===
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -503,11 +504,8 @@ function WelcomeModal({
               </div>
 
               <div className="text-[13px] text-amber-900/80 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed mb-3">
-                <strong>🔒 Note on Google Sign-in:</strong><br />
-                If you see <i>“Google hasn’t verified this app”</i> — don’t worry.
-                This simply means the developer (<b>abhishekbansal55@gmail.com</b>) is completing Google’s verification process.<br />
-                You can safely continue by choosing <b>“Advanced → Go to Gratitude Journal (unsafe)”</b>.
-                Your journal data always stays private — stored locally or in <i>your own</i> Drive.
+                <strong>🌱 Created simply to spread mindfulness</strong><br />
+                — no costs, no expectations, just gratitude.<br />
               </div>
 
               <div className="mt-3 text-[13px] text-center text-amber-900/80">
@@ -694,6 +692,7 @@ export default function Home() {
     entriesThisMonth: 0,
     avgMood7d: 0,
   });
+  
 
   // App.jsx (inside the App() component, once)
   useEffect(() => {
